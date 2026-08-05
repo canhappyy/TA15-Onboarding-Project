@@ -1,0 +1,7 @@
+project_name = "ta15-onboarding"
+environment  = "dev"
+aws_region   = "ap-southeast-4"
+
+frontend_origins = [
+  "http://localhost:3000"
+]
