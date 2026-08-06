@@ -45,12 +45,12 @@ Error
 
 # Error Codes
 
-| HTTP | Code | Description |
-|------|------|-------------|
-|400|INVALID_REQUEST|Request validation failed|
-|404|NOT_FOUND|Requested resource does not exist|
-|429|TOO_MANY_REQUESTS|Rate limit exceeded|
-|500|INTERNAL_SERVER_ERROR|Unexpected server error|
+| HTTP | Code                  | Description                       |
+| ---- | --------------------- | --------------------------------- |
+| 400  | INVALID_REQUEST       | Request validation failed         |
+| 404  | NOT_FOUND             | Requested resource does not exist |
+| 429  | TOO_MANY_REQUESTS     | Rate limit exceeded               |
+| 500  | INTERNAL_SERVER_ERROR | Unexpected server error           |
 
 ---
 
@@ -64,7 +64,7 @@ Used by monitoring and deployment verification.
 
 ```json
 {
-    "status":"ok"
+  "status": "ok"
 }
 ```
 
@@ -105,17 +105,11 @@ This endpoint supports:
     "routes": [
       {
         "routeId": "route-1",
-
         "distanceMeters": 3400,
-
         "durationMinutes": 47,
-
         "sensoryLevel": "LOW",
-
         "congestionLevel": "LOW",
-
         "crowdScore": 24,
-
         "geometry": {
           "type": "LineString",
           "coordinates": []
@@ -123,17 +117,11 @@ This endpoint supports:
       },
       {
         "routeId": "route-2",
-
         "distanceMeters": 3000,
-
         "durationMinutes": 43,
-
         "sensoryLevel": "HIGH",
-
         "congestionLevel": "HIGH",
-
         "crowdScore": 176,
-
         "geometry": {
           "type": "LineString",
           "coordinates": []
@@ -165,11 +153,11 @@ Supports:
 
 ### Query Parameters
 
-|Parameter|Required|Description|
-|----------|--------|-----------|
-|latitude|Yes|Current latitude|
-|longitude|Yes|Current longitude|
-|radius|No|Search radius in metres (default 1000)|
+| Parameter | Required | Description                            |
+| --------- | -------- | -------------------------------------- |
+| latitude  | Yes      | Current latitude                       |
+| longitude | Yes      | Current longitude                      |
+| radius    | No       | Search radius in metres (default 1000) |
 
 Example
 
@@ -186,28 +174,18 @@ GET /refuges?latitude=-37.814&longitude=144.963&radius=1000
     "refuges": [
       {
         "id": 102,
-
         "name": "State Library Victoria",
-
         "category": "LIBRARY",
-
         "latitude": -37.809,
-
         "longitude": 144.965,
-
         "distanceMeters": 450
       },
       {
         "id": 211,
-
         "name": "Carlton Gardens",
-
         "category": "PARK",
-
         "latitude": -37.806,
-
         "longitude": 144.971,
-
         "distanceMeters": 610
       }
     ]
@@ -225,9 +203,9 @@ Returns current congestion information from pedestrian sensors.
 
 ### Query Parameters
 
-|Parameter|Required|Description|
-|----------|--------|-----------|
-|bbox|No|Bounding box|
+| Parameter | Required | Description  |
+| --------- | -------- | ------------ |
+| bbox      | No       | Bounding box |
 
 Example
 
@@ -246,17 +224,11 @@ GET /congestion?bbox=144.95,-37.82,144.98,-37.80
     "sensors": [
       {
         "sensorId": 34,
-
         "sensorName": "Flinders Street",
-
         "latitude": -37.817,
-
         "longitude": 144.967,
-
         "pedestrianCount": 158,
-
         "congestionLevel": "HIGH",
-
         "sensoryLevel": "HIGH"
       }
     ]
@@ -271,10 +243,10 @@ GET /congestion?bbox=144.95,-37.82,144.98,-37.80
 The backend derives sensory levels from pedestrian counts.
 
 | Pedestrian Count | Sensory Level |
-|------------------|---------------|
-|0-50|LOW|
-|51-150|MEDIUM|
-|151+|HIGH|
+| ---------------- | ------------- |
+| 0-50             | LOW           |
+| 51-150           | MEDIUM        |
+| 151+             | HIGH          |
 
 ---
 

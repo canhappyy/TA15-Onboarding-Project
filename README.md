@@ -6,7 +6,7 @@ Industry Experience Studio (FIT5120)
 
 ### Frontend
 
-- Next.js 15
+- Next.js
 - React
 - TypeScript
 - Tailwind CSS
@@ -53,14 +53,14 @@ project-root/
 
 Install the following tools before starting.
 
-| Tool | Version |
-|-------|----------|
-| Node.js | 22.x |
-| pnpm | Latest |
-| Python | 3.13 |
-| Terraform | >= 1.9 |
-| AWS CLI v2 | Latest |
-| Git | Latest |
+| Tool       | Version |
+| ---------- | ------- |
+| Node.js    | 22.x    |
+| pnpm       | Latest  |
+| Python     | 3.13    |
+| Terraform  | >= 1.9  |
+| AWS CLI v2 | Latest  |
+| Git        | Latest  |
 
 Verify installation
 
@@ -193,9 +193,9 @@ Expected output
 
 ```json
 {
-    "Account": "...",
-    "Arn": "...",
-    "UserId": "..."
+  "Account": "...",
+  "Arn": "...",
+  "UserId": "..."
 }
 ```
 
@@ -265,7 +265,7 @@ Expected response
 
 ```json
 {
-    "status":"ok"
+  "status": "ok"
 }
 ```
 
