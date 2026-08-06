@@ -3,7 +3,7 @@ export interface Route {
   time: string
   distance: string
   via: string
-  crowdLevel: "Low" | "High"
+  crowdLevel: "Low" | "Medium" | "High"
   badgeClass: string
 }
 
@@ -21,8 +21,8 @@ export const MOCK_ROUTES: Route[] = [
     time: "10 min",
     distance: "0.85km",
     via: "Via Elizabeth St",
-    crowdLevel: "Low",
-    badgeClass: "bg-[#8da2cf] text-white",
+    crowdLevel: "Medium",
+    badgeClass: "bg-[#f0a030] text-white",
   },
   {
     id: "route-3",
@@ -30,6 +30,6 @@ export const MOCK_ROUTES: Route[] = [
     distance: "0.7km",
     via: "Via Swanston St",
     crowdLevel: "High",
-    badgeClass: "bg-[#f0a030] text-white",
+    badgeClass: "bg-[#ef4444] text-white",
   },
 ]

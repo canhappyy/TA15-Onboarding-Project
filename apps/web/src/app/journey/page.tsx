@@ -3,7 +3,7 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Location01Icon } from "@hugeicons/core-free-icons"
 import { useJourney } from "@/hooks/use-journey"
-import { JourneyHeader } from "@/components/shared/journey-header"
+import { AppLogo } from "@/components/shared/app-logo"
 import { JourneyInput } from "@/components/shared/journey-input"
 import { JourneyFilter } from "@/components/journey/journey-filter"
 import { RouteCard } from "@/components/journey/route-card"
@@ -21,8 +21,8 @@ export default function JourneyPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4.5 animate-fade-in">
-      {/* Reusable Header */}
-      <JourneyHeader />
+      {/* App Header / Logo */}
+      <AppLogo />
 
       {/* Origin & Destination Inputs */}
       <section className="flex flex-col gap-3">

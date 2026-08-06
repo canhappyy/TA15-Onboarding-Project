@@ -1,6 +1,6 @@
 interface JourneyFilterProps {
-  activeFilter: "all" | "Low" | "High"
-  onToggleFilter: (filter: "Low" | "High") => void
+  activeFilter: "all" | "Low" | "Medium" | "High"
+  onToggleFilter: (filter: "Low" | "Medium" | "High") => void
   className?: string
 }
 
@@ -25,11 +25,22 @@ export function JourneyFilter({
       </button>
       <button
         type="button"
+        onClick={() => onToggleFilter("Medium")}
+        className={`cursor-pointer rounded-md px-3 py-1 font-bold transition-all duration-200 ${
+          activeFilter === "Medium"
+            ? "bg-[#f0a030] text-white shadow-xs scale-105"
+            : "bg-[#f0a030]/15 text-[#f0a030] hover:bg-[#f0a030]/25"
+        }`}
+      >
+        Medium
+      </button>
+      <button
+        type="button"
         onClick={() => onToggleFilter("High")}
         className={`cursor-pointer rounded-md px-3 py-1 font-bold transition-all duration-200 ${
           activeFilter === "High"
-            ? "bg-[#f0a030] text-white shadow-xs scale-105"
-            : "bg-[#f0a030]/15 text-[#f0a030] hover:bg-[#f0a030]/25"
+            ? "bg-[#ef4444] text-white shadow-xs scale-105"
+            : "bg-[#ef4444]/15 text-[#ef4444] hover:bg-[#ef4444]/25"
         }`}
       >
         High

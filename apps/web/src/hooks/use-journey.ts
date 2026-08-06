@@ -4,13 +4,13 @@ import { MOCK_ROUTES, type Route } from "@/lib/mock-routes"
 export function useJourney() {
   const [origin, setOrigin] = useState("Current location")
   const [destination, setDestination] = useState("Flinders St Station")
-  const [activeFilter, setActiveFilter] = useState<"all" | "Low" | "High">("all")
+  const [activeFilter, setActiveFilter] = useState<"all" | "Low" | "Medium" | "High">("all")
 
   const filteredRoutes = MOCK_ROUTES.filter(
     (route) => activeFilter === "all" || route.crowdLevel === activeFilter
   )
 
-  const toggleFilter = (filter: "Low" | "High") => {
+  const toggleFilter = (filter: "Low" | "Medium" | "High") => {
     setActiveFilter((prev) => (prev === filter ? "all" : filter))
   }
 
