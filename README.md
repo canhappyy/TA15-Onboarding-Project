@@ -6,7 +6,7 @@ Industry Experience Studio (FIT5120)
 
 ### Frontend
 
-- Next.js 15
+- Next.js
 - React
 - TypeScript
 - Tailwind CSS
@@ -53,14 +53,14 @@ project-root/
 
 Install the following tools before starting.
 
-| Tool | Version |
-|-------|----------|
-| Node.js | 22.x |
-| pnpm | Latest |
-| Python | 3.13 |
-| Terraform | >= 1.9 |
-| AWS CLI v2 | Latest |
-| Git | Latest |
+| Tool       | Version |
+| ---------- | ------- |
+| Node.js    | 22.x    |
+| pnpm       | Latest  |
+| Python     | 3.13    |
+| Terraform  | >= 1.9  |
+| AWS CLI v2 | Latest  |
+| Git        | Latest  |
 
 Verify installation
 
@@ -70,16 +70,6 @@ pnpm -v
 python3 --version
 terraform version
 aws --version
-```
-
----
-
-# Clone Repository
-
-```bash
-git clone <repository-url>
-
-cd TA15-Onboarding-Project
 ```
 
 ---
@@ -98,6 +88,8 @@ If Node.js 22 is not installed:
 nvm install 22
 nvm use 22
 ```
+
+If `nvm` is not installed, follow this [guide](https://www.freecodecamp.org/news/node-version-manager-nvm-install-guide/)
 
 ---
 
@@ -135,15 +127,30 @@ http://localhost:3000
 
 # AWS Setup
 
+## 0. Create AWS Account
+
+1. Go to this [AWS Console link](https://aws.amazon.com/console/)
+2. Click **Create account** on the top right
+3. Use student email to register for Root user email
+4. Once register successfully, set up an Alias
+   1. Go to the **IAM Dashboard** in the AWS console.
+   2. Find **Account Alias** under the AWS Account box (on the right of screen).
+   3. Click **Create** (or **Edit** if changing).
+   4. Type a unique, lowercase name for your account.
+   5. Click **Save changes**.
+
 ## 1. Create IAM User
 
-Recommended permissions:
+On IAM dashboard, click **IAM Users** on the left side and create user
+**Note:** leave **Provide user access to the AWS Management Console - optional** uncheck
+
+Next, select **Attach policies directly** and search permission policy below
 
 ```
 AdministratorAccess
 ```
 
-Generate an Access Key for CLI usage.
+Generate an Access Key for CLI usage. (Save csv file)
 
 ---
 
@@ -156,13 +163,10 @@ aws configure --profile ta15-dev
 Example
 
 ```
-AWS Access Key ID:
-AWS Secret Access Key:
-Region:
-ap-southeast-4
-
-Output:
-json
+AWS Access Key ID: <from csv file>
+AWS Secret Access Key: <from csv file>
+Region: ap-southeast-4
+Output: json
 ```
 
 ---
@@ -193,15 +197,17 @@ Expected output
 
 ```json
 {
-    "Account": "...",
-    "Arn": "...",
-    "UserId": "..."
+  "Account": "...",
+  "Arn": "...",
+  "UserId": "..."
 }
 ```
 
 ---
 
 # Terraform Setup
+
+If `Terraform` is not installed, follow this [guide](https://developer.hashicorp.com/terraform/install)
 
 Move into the Terraform directory.
 
@@ -238,6 +244,7 @@ Deploy infrastructure.
 ```bash
 terraform apply
 ```
+Note: Enter `yes` if prompted
 
 ---
 
@@ -265,7 +272,7 @@ Expected response
 
 ```json
 {
-    "status":"ok"
+  "status": "ok"
 }
 ```
 
