@@ -1,4 +1,5 @@
 import { Map } from "@/components/map/map"
+import { Card } from "@/components/ui/card"
 
 interface CrowdMapCardProps {
   className?: string
@@ -7,8 +8,8 @@ interface CrowdMapCardProps {
 
 export function CrowdMapCard({ className, lastUpdated = "10:30 PM" }: CrowdMapCardProps) {
   return (
-    <section className={`flex flex-col rounded-3xl border border-slate-100/80 bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:border-slate-800/80 dark:bg-slate-900 ${className || ""}`}>
-      <h2 className="mb-3 text-base font-semibold tracking-tight text-slate-700 dark:text-slate-300">
+    <Card className={`flex flex-col gap-2.5 rounded-3xl border border-slate-100/80 bg-white p-5 shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:border-slate-800/80 dark:bg-slate-900 ${className || ""}`}>
+      <h2 className="text-base font-semibold tracking-tight text-slate-700 dark:text-slate-300">
         Current Crowds
       </h2>
       
@@ -31,9 +32,9 @@ export function CrowdMapCard({ className, lastUpdated = "10:30 PM" }: CrowdMapCa
         </div>
       </div>
 
-      <p className="mt-3 text-[11px] font-medium text-slate-400 dark:text-slate-500">
+      <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
         Last Updated: {lastUpdated}
       </p>
-    </section>
+    </Card>
   )
 }

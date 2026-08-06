@@ -1,6 +1,7 @@
 import React from "react"
+import { Input } from "@/components/ui/input"
 
-interface JourneyInputProps extends React.ComponentPropsWithoutRef<"input"> {
+interface JourneyInputProps extends React.ComponentPropsWithoutRef<typeof Input> {
   icon: React.ReactNode
 }
 
@@ -10,8 +11,8 @@ export function JourneyInput({ icon, className, ...props }: JourneyInputProps) {
       <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
         {icon}
       </span>
-      <input
-        className={`w-full min-w-0 bg-transparent text-sm font-medium tracking-tight text-slate-700 outline-none placeholder:text-slate-400/80 focus:outline-none dark:text-slate-200 ${className || ""}`}
+      <Input
+        className={`h-auto border-none bg-transparent p-0 text-sm font-medium tracking-tight text-slate-700 outline-none ring-0 placeholder:text-slate-400/80 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 dark:text-slate-200 ${className || ""}`}
         {...props}
       />
     </div>

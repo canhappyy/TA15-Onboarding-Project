@@ -23,6 +23,7 @@ export default function HomePage() {
         <NavButton
           icon={Yoga01Icon}
           label="Find a quiet space"
+          href="/quiet-spaces"
         />
       </nav>
     </div>
