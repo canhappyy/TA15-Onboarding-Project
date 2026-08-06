@@ -17,6 +17,7 @@ export default function HomePage() {
         <NavButton
           icon={Search02Icon}
           label="Where would you like to go?"
+          href="/journey"
         />
 
         <NavButton
