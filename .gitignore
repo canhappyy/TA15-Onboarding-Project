@@ -35,3 +35,4 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+services/api/src/pipeline/data/
