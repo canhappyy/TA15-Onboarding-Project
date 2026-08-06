@@ -57,6 +57,5 @@ CATEGORY_DISPLAY_NAMES = {
 # --------------------------------------------------------------------------
 # US1.1 / US1.2 -- Sensory score rules
 # --------------------------------------------------------------------------
-HIGH_DENSITY_THRESHOLD = 200
-ACTIVE_SENSOR_STATUS = "A"
-REALTIME_WINDOW_MINUTES = 30
+#ACTIVE_SENSOR_STATUS = "A"
+
