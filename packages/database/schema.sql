@@ -1,92 +1,94 @@
--- ClearWay database schema
+-- ClearWay database schema (PostgreSQL / Amazon RDS)
 -- Built directly from the confirmed ERD. Do not restructure without
 -- re-running the normalization walkthrough this was checked against.
 --
--- Naming standardized to PEDESTRIAN_HOURLY_COUNT (matches ERD/diagrams).
--- The unit template's "PEDESTRIAN_HOUR_COUNT" spelling is deprecated —
--- update the template doc to match this, not the other way round.
 
-PRAGMA foreign_keys = ON;
+
+-- Ported from the SQLite prototype:
+--   - AUTOINCREMENT / INTEGER PRIMARY KEY  -> GENERATED ALWAYS AS IDENTITY
+--   - TEXT datetime columns                -> TIMESTAMPTZ
+--   - INTEGER 0/1 flags                    -> BOOLEAN
+--   - PRAGMA foreign_keys ON               -> not needed, Postgres enforces FKs by default
 
 -- ---------------------------------------------------------------------
 -- Sensor metadata (occasional updates) -> US1.1, US1.2
 -- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS SENSOR_LOCATION (
-    Location_ID         INTEGER PRIMARY KEY,
-    Sensor_Description  TEXT,
-    Sensor_Name         TEXT,
-    Installation_Date   DATE,
-    Note                TEXT,
-    Location_Type       TEXT,      -- Indoor / Outdoor
-    Status               TEXT,      -- 'A' = Active, etc.
-    Direction_1_Label    TEXT,
-    Direction_2_Label    TEXT,
-    Latitude             REAL,
-    Longitude            REAL
+CREATE TABLE IF NOT EXISTS sensor_location (
+    location_id         INTEGER PRIMARY KEY,       -- comes from source data, not generated
+    sensor_description   TEXT,
+    sensor_name           TEXT,
+    installation_date     DATE,
+    note                   TEXT,
+    location_type          TEXT,      -- Indoor / Outdoor
+    status                  TEXT,      -- 'A' = Active, etc.
+    direction_1_label       TEXT,
+    direction_2_label       TEXT,
+    latitude                 DOUBLE PRECISION,
+    longitude                DOUBLE PRECISION
 );
 
 -- ---------------------------------------------------------------------
 -- Pedestrian counts, hourly (daily batch updates) -> US1.1
 -- One row per sensor per hour. Composite key per ERD:
--- (Location_ID, Sensing_DateTime).
+-- (location_id, sensing_datetime).
 -- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS PEDESTRIAN_HOURLY_COUNT (
-    Location_ID       INTEGER NOT NULL REFERENCES SENSOR_LOCATION(Location_ID),
-    Sensing_DateTime  TEXT    NOT NULL,   -- ISO-8601, derived from Sensing_Date + HourDay
-    Direction_1_Count INTEGER,
-    Direction_2_Count INTEGER,
-    Total_Count       INTEGER NOT NULL,
-    Is_Imputed        INTEGER NOT NULL DEFAULT 0,  -- 1 if zero-filled for a gap
-    PRIMARY KEY (Location_ID, Sensing_DateTime)
+CREATE TABLE IF NOT EXISTS pedestrian_hourly_count (
+    location_id        INTEGER NOT NULL REFERENCES sensor_location(location_id),
+    sensing_datetime    TIMESTAMPTZ NOT NULL,   -- derived from Sensing_Date + HourDay
+    direction_1_count    INTEGER,
+    direction_2_count    INTEGER,
+    total_count           INTEGER NOT NULL,
+    is_imputed             BOOLEAN NOT NULL DEFAULT FALSE,  -- true if zero-filled for a gap
+    PRIMARY KEY (location_id, sensing_datetime)
 );
 
 CREATE INDEX IF NOT EXISTS idx_hourly_datetime
-    ON PEDESTRIAN_HOURLY_COUNT (Sensing_DateTime);
+    ON pedestrian_hourly_count (sensing_datetime);
 
 -- ---------------------------------------------------------------------
 -- Pedestrian counts, minute-level / near-real-time (~15 min updates) -> US1.2
--- Composite key per ERD: (Sensing_DateTime, Location_ID).
+-- Composite key per ERD: (sensing_datetime, location_id).
 -- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS PEDESTRIAN_MINUTE_COUNT (
-    Sensing_DateTime  TEXT    NOT NULL,
-    Location_ID       INTEGER NOT NULL REFERENCES SENSOR_LOCATION(Location_ID),
-    Direction_1_Count INTEGER,
-    Direction_2_Count INTEGER,
-    Total_Count       INTEGER NOT NULL,
-    Is_Imputed        INTEGER NOT NULL DEFAULT 0,  -- 1 if zero-filled (no reading = 0, not missing)
-    PRIMARY KEY (Sensing_DateTime, Location_ID)
+CREATE TABLE IF NOT EXISTS pedestrian_minute_count (
+    sensing_datetime    TIMESTAMPTZ NOT NULL,
+    location_id          INTEGER NOT NULL REFERENCES sensor_location(location_id),
+    direction_1_count     INTEGER,
+    direction_2_count     INTEGER,
+    total_count            INTEGER NOT NULL,
+    is_imputed              BOOLEAN NOT NULL DEFAULT FALSE,  -- true if zero-filled (no reading = 0, not missing)
+    PRIMARY KEY (sensing_datetime, location_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_minute_datetime
-    ON PEDESTRIAN_MINUTE_COUNT (Sensing_DateTime);
+    ON pedestrian_minute_count (sensing_datetime);
 
 -- ---------------------------------------------------------------------
--- Landmarks, three-tier Theme -> Category -> Landmark (occasional
+-- Landmarks, three-tier theme -> category -> landmark (occasional
 -- updates) -> US2.1. Split fixes the transitive dependency
--- (Category_id -> Theme -> Sub_Theme) found in the template's
+-- (category_id -> theme -> sub_theme) found in the template's
 -- normalization example.
 -- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS THEME (
-    Theme_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    Theme      TEXT NOT NULL,
-    Sub_Theme  TEXT NOT NULL,
-    UNIQUE (Theme, Sub_Theme)
+CREATE TABLE IF NOT EXISTS theme (
+    theme_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    theme         TEXT NOT NULL,
+    sub_theme      TEXT NOT NULL,
+    UNIQUE (theme, sub_theme)
 );
 
-CREATE TABLE IF NOT EXISTS LANDMARK_CATEGORY (
-    Category_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    Theme_id        INTEGER NOT NULL REFERENCES THEME(Theme_id),
-    Category_Name   TEXT NOT NULL,   -- user-facing filter label
-    Is_Refuge       INTEGER NOT NULL DEFAULT 0  -- explicit US2.1 allow-list flag
+CREATE TABLE IF NOT EXISTS landmark_category (
+    category_id     INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    theme_id         INTEGER NOT NULL REFERENCES theme(theme_id),
+    category_name     TEXT NOT NULL,   -- user-facing filter label
+    is_refuge          BOOLEAN NOT NULL DEFAULT FALSE  -- explicit US2.1 allow-list flag
 );
 
-CREATE TABLE IF NOT EXISTS LANDMARK (
-    Landmark_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    Category_id   INTEGER NOT NULL REFERENCES LANDMARK_CATEGORY(Category_id),
-    Feature_Name  TEXT NOT NULL,
-    Latitude      REAL,
-    Longitude     REAL
+CREATE TABLE IF NOT EXISTS landmark (
+    landmark_id    INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    category_id     INTEGER NOT NULL REFERENCES landmark_category(category_id),
+    feature_name      TEXT NOT NULL,
+    latitude           DOUBLE PRECISION,
+    longitude          DOUBLE PRECISION
 );
 
-CREATE INDEX IF NOT EXISTS idx_landmark_category ON LANDMARK (Category_id);
-CREATE INDEX IF NOT EXISTS idx_category_refuge ON LANDMARK_CATEGORY (Is_Refuge);
+CREATE INDEX IF NOT EXISTS idx_landmark_category ON landmark (category_id);
+CREATE INDEX IF NOT EXISTS idx_category_refuge ON landmark_category (is_refuge);
