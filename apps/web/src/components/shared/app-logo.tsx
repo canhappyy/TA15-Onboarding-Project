@@ -8,7 +8,7 @@ export function AppLogo({ className }: AppLogoProps) {
   return (
     <header className={`flex flex-col items-center justify-center py-4 text-center ${className || ""}`}>
       <Image
-        src="/next.svg"
+        src="/clearway-logo.png"
         alt="Clearway Logo Placeholder"
         width={130}
         height={32}
