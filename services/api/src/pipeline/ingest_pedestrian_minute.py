@@ -48,7 +48,11 @@ def load(csv_path=config.MINUTE_COUNTS_CSV, database_url: str = config.DATABASE_
             "Total_of_Directions": "total_count",
         }
     )
-    raw = raw.drop_duplicates(subset=["sensing_datetime", "location_id"])
+    before = len(raw)
+    raw = raw.drop_duplicates(subset=["sensing_datetime", "location_id"], keep="last")
+    dropped = before - len(raw)
+    if dropped:
+        print(f"pedestrian_minute_count: resolved {dropped} conflicting duplicate readings (kept latest)")
 
     timestamps = raw["sensing_datetime"].unique()
 
