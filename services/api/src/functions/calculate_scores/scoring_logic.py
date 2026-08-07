@@ -5,25 +5,46 @@ Each sensor has its own threshold, not one fixed number for all.
 Includes both the DB fetch functions and the scoring functions,
 since scoring always needs data fetched first.
 
-Fetch functions accept:
+Fetchs functions accept:
   - a single int   -> one sensor
   - a list of ints -> sensors along one route
   - None           -> every sensor
+
+Uses config.py from services/api/src/pipeline/
 """
  
+
+import sys
+from pathlib import Path
+from typing import Any, Optional, Union
 
 from sqlalchemy import create_engine, text
 import pandas as pd
 import numpy as np
  
+LocationId = Optional[Union[int, list, tuple, set]]
+
+
+# Finds and imports config.py from the pipeline folder 
+# so no duplicate copy for the DB connection settings.
+def _load_config():
+    pipeline_path = Path(__file__).resolve().parents[2] / "pipeline"
+    if str(pipeline_path) not in sys.path:
+        sys.path.insert(0, str(pipeline_path))
+    import config
+    return config
+ 
 
 # Changes location_id (int, list, or None) into a SQL filter and its parameter values
-def _location_filter(location_id):
+def _location_filter(location_id: LocationId) -> tuple[str, dict[str, Any]]:
+    params: dict[str, Any] = {}
     if location_id is None:
-        return "", {}
+        return "", params
     if isinstance(location_id, (list, tuple, set)):
-        return "AND location_id = ANY(:location_ids)", {"location_ids": list(location_id)}
-    return "AND location_id = :location_id", {"location_id": location_id}
+        params["location_ids"] = list(location_id)
+        return "AND location_id = ANY(:location_ids)", params
+    params["location_id"] = location_id
+    return "AND location_id = :location_id", params
 
 
 
@@ -32,12 +53,16 @@ def _location_filter(location_id):
 # Fetching data
 # ------------------------------------------------------------
 # Reads data from Postgres, which was loaded by ingest_*.py
-def fetch_hourly_history(location_id=None, database_url: str = None) -> pd.DataFrame:
-    """Get historical hourly counts, used for the threshold."""
-    import config
-    database_url = database_url or config.DATABASE_URL
+# Gets historical hourly counts and uses for the threshold
+def fetch_hourly_history(
+    location_id: LocationId = None,
+    database_url: Optional[str] = None,
+) -> pd.DataFrame:
+    if database_url is None:
+        config = _load_config()
+        database_url = config.DATABASE_URL
     engine = create_engine(database_url)
- 
+
     where_clause, params = _location_filter(location_id)
     query = text(f"""
         SELECT location_id, sensing_datetime, total_count
@@ -48,10 +73,16 @@ def fetch_hourly_history(location_id=None, database_url: str = None) -> pd.DataF
         return pd.read_sql(query, conn, params=params)
  
  
-def fetch_recent_minutes(location_id=None, hours_back: int = 1, database_url: str = None) -> pd.DataFrame:
+# Gets recent minute-level counts and uses for the current reading
+def fetch_recent_minutes(
+    location_id: LocationId = None,
+    hours_back: int = 1,
+    database_url: Optional[str] = None,
+) -> pd.DataFrame:
     """Get recent minute-level counts, used for the current reading."""
-    import config
-    database_url = database_url or config.DATABASE_URL
+    if database_url is None:
+        config = _load_config()
+        database_url = config.DATABASE_URL
     engine = create_engine(database_url)
  
     where_clause, params = _location_filter(location_id)
@@ -64,7 +95,7 @@ def fetch_recent_minutes(location_id=None, hours_back: int = 1, database_url: st
     """)
     with engine.connect() as conn:
         return pd.read_sql(query, conn, params=params)
-
+    
 
 
 
@@ -90,7 +121,7 @@ def get_last_hour_total(
     live_minutes: pd.DataFrame,
     count_col: str = "total_count",
     datetime_col: str = "sensing_datetime",
-    reference_time: pd.Timestamp = None,
+    reference_time: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     df = live_minutes.copy()
     df[datetime_col] = pd.to_datetime(df[datetime_col])
@@ -137,7 +168,7 @@ def classify_current_conditions(
 # ------------------------------------------------------------
 # Shortcut: fetch + score
 # ------------------------------------------------------------
-def get_scores(location_id=None, database_url: str = None) -> pd.DataFrame:
+def get_scores(location_id: LocationId = None, database_url: Optional[str] = None) -> pd.DataFrame:
 
     hourly_history = fetch_hourly_history(location_id, database_url)
     live_minutes = fetch_recent_minutes(location_id, database_url=database_url)
