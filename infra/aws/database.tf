@@ -29,7 +29,7 @@ resource "aws_db_instance" "postgres" {
   publicly_accessible    = false
   multi_az               = false
 
-  backup_retention_period    = 7
+  backup_retention_period    = 1
   auto_minor_version_upgrade = true
   copy_tags_to_snapshot      = true
 
