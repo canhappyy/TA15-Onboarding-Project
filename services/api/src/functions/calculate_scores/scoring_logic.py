@@ -61,7 +61,7 @@ def fetch_hourly_history(
     if database_url is None:
         config = _load_config()
         database_url = config.DATABASE_URL
-    engine = create_engine(database_url)
+    engine = create_engine(str(database_url))
 
     where_clause, params = _location_filter(location_id)
     query = text(f"""
@@ -83,7 +83,7 @@ def fetch_recent_minutes(
     if database_url is None:
         config = _load_config()
         database_url = config.DATABASE_URL
-    engine = create_engine(database_url)
+    engine = create_engine(str(database_url))
  
     where_clause, params = _location_filter(location_id)
     params["hours_back"] = hours_back
@@ -127,8 +127,10 @@ def get_last_hour_total(
     df[datetime_col] = pd.to_datetime(df[datetime_col])
  
     if reference_time is None:
-        reference_time = df[datetime_col].max()
-    window_start = reference_time - pd.Timedelta(hours=1)
+        ref_time = df[datetime_col].max()
+    else:
+        ref_time = reference_time
+    window_start = ref_time - pd.Timedelta(hours=1)
  
     recent = df[(df[datetime_col] > window_start) & (df[datetime_col] <= reference_time)]
  
