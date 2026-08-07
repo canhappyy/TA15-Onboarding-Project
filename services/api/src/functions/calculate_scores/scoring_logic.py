@@ -7,7 +7,7 @@ since scoring always needs data fetched first.
 
 Fetchs functions accept:
   - a single int   -> one sensor
-  - a list of ints -> sensors along one route
+  - a list of ints -> all sensors along one route
   - None           -> every sensor
 
 Uses config.py from services/api/src/pipeline/
