@@ -278,6 +278,52 @@ Expected response
 
 ---
 
+---
+
+# Data Pipeline Setup
+
+The pipeline (`services/api/src/pipeline/`) ingests pedestrian sensor data into PostgreSQL. Requires a local Postgres instance and a couple of data files.
+
+## 1. Local Postgres
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+psql postgres -c "CREATE USER clearway WITH PASSWORD 'clearway_dev' CREATEDB;"
+psql postgres -c "CREATE DATABASE clearway OWNER clearway;"
+cd services/api/src/pipeline
+python3 build_schema.py --reset
+```
+
+## 2. Sensor locations
+
+Already committed to the repo at `services/api/src/pipeline/data/pedestrian-counting-system-sensor-locations.csv` (source: [Melbourne Open Data Portal](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-sensor-locations/), CC BY 3.0 AU). No download needed — just run:
+
+```bash
+python3 ingest_sensor_locations.py
+```
+
+## 3. Minute counts
+
+Use the live API — no download needed:
+
+```bash
+python3 -c "from ingest_pedestrian_minute import load; load(source='api')"
+```
+
+A CSV-based backfill path also exists (`load(source='csv')`) for testing against historical data — see `MINUTE_COUNTS_CSV` in `config.py` for the expected file path if needed.
+
+## 4. Hourly counts
+
+Large file (~1.6M rows), no live equivalent, so it must be downloaded manually if you're working on `ingest_pedestrian_hourly.py`:
+
+1. Download the CSV from [here](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-monthly-counts-per-hour/export/)
+2. Place it at `services/api/src/pipeline/data/pedestrian-counting-system-monthly-counts-per-hour.csv`
+
+**Note:** always use the portal's CSV export (`/export/` page), not data pulled via the live API — the two use different column naming conventions (`Location_ID` vs `location_id`), and the ingest scripts expect the CSV export's format.
+
+---
+
 # Environment Variables
 
 Frontend
