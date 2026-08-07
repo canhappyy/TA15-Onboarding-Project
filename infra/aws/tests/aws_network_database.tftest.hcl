@@ -26,6 +26,12 @@ mock_provider "aws" {
       execution_arn = "arn:aws:execute-api:ap-southeast-4:123456789012:mock-api"
     }
   }
+
+  mock_resource "aws_lambda_layer_version" {
+    defaults = {
+      arn = "arn:aws:lambda:ap-southeast-4:123456789012:layer:mock-psycopg:1"
+    }
+  }
 }
 
 run "network_database_plan" {
@@ -88,8 +94,8 @@ run "network_database_plan" {
   }
 
   assert {
-    condition     = aws_db_instance.postgres.backup_retention_period == 7
-    error_message = "Database backups must be retained for seven days."
+    condition     = aws_db_instance.postgres.backup_retention_period == 1
+    error_message = "Database backups must use the one-day AWS Free-plan limit."
   }
 
   assert {

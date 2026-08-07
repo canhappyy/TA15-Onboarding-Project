@@ -23,6 +23,53 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role" "rds_connectivity_execution" {
+  name = "${local.name_prefix}-rds-connectivity-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect = "Allow"
+
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_connectivity_basic" {
+  role       = aws_iam_role.rds_connectivity_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "rds_connectivity_vpc" {
+  role       = aws_iam_role.rds_connectivity_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy" "rds_connectivity_secret" {
+  name = "${local.name_prefix}-rds-connectivity-secret"
+  role = aws_iam_role.rds_connectivity_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_db_instance.postgres.master_user_secret[0].secret_arn
+      }
+    ]
+  })
+}
+
 resource "aws_security_group" "lambda" {
   name        = "${local.name_prefix}-lambda-sg"
   description = "Outbound access for VPC Lambda functions"
