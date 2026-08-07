@@ -33,8 +33,9 @@ DATABASE_URL = os.getenv(
 # Paths
 # --------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
-SCHEMA_PATH = BASE_DIR / "schema.sql"
+SCHEMA_PATH = BASE_DIR.parents[3] / "packages" / "database" / "schema.sql"
 
+# Point to where the raw CSV files are stored locally
 RAW_DIR = Path(os.getenv("RAW_DIR", BASE_DIR / "data"))
 SENSOR_LOCATIONS_CSV = RAW_DIR / "pedestrian-counting-system-sensor-locations.csv"
 HOURLY_COUNTS_CSV = RAW_DIR / "pedestrian-counting-system-monthly-counts-per-hour.csv"

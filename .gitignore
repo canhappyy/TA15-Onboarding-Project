@@ -35,4 +35,9 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
-services/api/src/pipeline/data/
+
+# Pipeline raw data (large/downloaded files) -- except small reference
+# files committed so the pipeline runs without manual downloads
+services/api/src/pipeline/data/*
+!services/api/src/pipeline/data/pedestrian-counting-system-sensor-locations.csv
+services/api/src/pipeline/.env
