@@ -52,3 +52,8 @@ output "private_subnet_ids" {
   description = "IDs of the private subnets"
   value       = aws_subnet.private[*].id
 }
+
+output "rds_connectivity_lambda_name" {
+  description = "Name of the internal Lambda used for manual RDS connectivity checks"
+  value       = aws_lambda_function.rds_connectivity.function_name
+}
