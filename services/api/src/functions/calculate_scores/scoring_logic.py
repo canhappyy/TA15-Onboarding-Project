@@ -132,7 +132,7 @@ def get_last_hour_total(
         ref_time = reference_time
     window_start = ref_time - pd.Timedelta(hours=1)
  
-    recent = df[(df[datetime_col] > window_start) & (df[datetime_col] <= reference_time)]
+    recent = df[(df[datetime_col] > window_start) & (df[datetime_col] <= ref_time)]
  
     return (
         recent.groupby("location_id")[count_col]
