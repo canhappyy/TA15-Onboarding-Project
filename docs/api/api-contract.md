@@ -1,35 +1,20 @@
-# Sensory Navigation API Specification
+# Clearway API contract
 
 Version: 1.0
-Base URL:
-https://<api-gateway-url>/v1
 
-## Overview
+Base URL: `https://<api-gateway-url>`
 
-This API provides data required by the Sensory Navigation application.
+This document locks future public endpoint shapes. Except for `GET /health`, all endpoints return the common envelope below. Endpoints may remain unavailable until their implementation milestones land.
 
-The frontend communicates only with this API. The backend is responsible for:
+## Common envelope
 
-- retrieving data from City of Melbourne Open Data APIs
-- retrieving and caching processed data from PostgreSQL
-- calculating congestion levels
-- calculating sensory indicators
-- returning nearby sensory refuge locations
-
----
-
-# Common Response Format
-
-Success
+Success:
 
 ```json
-{
-  "success": true,
-  "data": {}
-}
+{"success":true,"data":{}}
 ```
 
-Error
+Failure:
 
 ```json
 {
@@ -41,62 +26,83 @@ Error
 }
 ```
 
----
+Every response uses `Content-Type: application/json`.
 
-# Error Codes
+## Error codes
 
-| HTTP | Code                  | Description                       |
-| ---- | --------------------- | --------------------------------- |
-| 400  | INVALID_REQUEST       | Request validation failed         |
-| 404  | NOT_FOUND             | Requested resource does not exist |
-| 429  | TOO_MANY_REQUESTS     | Rate limit exceeded               |
-| 500  | INTERNAL_SERVER_ERROR | Unexpected server error           |
+| Code | Typical HTTP status | Meaning |
+| --- | ---: | --- |
+| `INVALID_REQUEST` | 400 | Request parameters or body are invalid. |
+| `OUTSIDE_SERVICE_AREA` | 400 | Location is outside the City of Melbourne boundary. |
+| `NOT_FOUND` | 404 | Requested resource does not exist. |
+| `UPSTREAM_TIMEOUT` | 504 | An upstream provider timed out. |
+| `UPSTREAM_ERROR` | 502 | An upstream provider failed or returned malformed data. |
+| `DATA_UNAVAILABLE` | 503 | Required application data is unavailable. |
+| `TOO_MANY_REQUESTS` | 429 | Rate limit exceeded. |
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error. |
 
----
+## Shared values
 
-# 1. Health Check
+Coordinates use `{ "latitude": number, "longitude": number }`.
 
-## GET /health
+GeoJSON route geometry uses a `LineString`. Each position is `[longitude, latitude]`.
 
-Used by monitoring and deployment verification.
+Sensory indicators are only `LOW` or `HIGH`.
 
-### Response
+Freshness uses:
 
 ```json
 {
-  "status": "ok"
+  "observedAt": "2026-08-08T10:15:00+10:00",
+  "stale": false,
+  "fallbackUsed": false
 }
 ```
 
----
+`observedAt` may be `null` when no observation timestamp is available.
 
-# 2. Search Routes
+## `GET /health`
 
-## POST /routes/search
+Deployment and monitoring probe. This is the only endpoint outside the common envelope.
 
-Returns candidate walking routes between an origin and destination enriched with sensory information.
+```json
+{"status":"ok"}
+```
 
-This endpoint supports:
+## `GET /locations/search?text=<query>`
 
-- US1.1
-- US1.2
-
-### Request
+Returns at most five OpenRouteService suggestions inside the City of Melbourne boundary.
 
 ```json
 {
-  "origin": {
-    "latitude": -37.911,
-    "longitude": 145.134
-  },
-  "destination": {
-    "latitude": -37.814,
-    "longitude": 144.963
+  "success": true,
+  "data": {
+    "suggestions": [
+      {
+        "id": "ors-place-id",
+        "label": "State Library Victoria, Melbourne VIC",
+        "coordinates": {
+          "latitude": -37.8098,
+          "longitude": 144.9652
+        }
+      }
+    ]
   }
 }
 ```
 
-### Response
+## `POST /routes/search`
+
+Request:
+
+```json
+{
+  "origin": {"latitude": -37.8179, "longitude": 144.9671},
+  "destination": {"latitude": -37.8098, "longitude": 144.9652}
+}
+```
+
+Response:
 
 ```json
 {
@@ -104,27 +110,22 @@ This endpoint supports:
   "data": {
     "routes": [
       {
-        "routeId": "route-1",
-        "distanceMeters": 3400,
-        "durationMinutes": 47,
-        "sensoryLevel": "LOW",
-        "congestionLevel": "LOW",
-        "crowdScore": 24,
+        "id": "route-1",
+        "durationMinutes": 18,
+        "walkingDistanceKm": 1.3,
+        "score": 24,
+        "indicator": "LOW",
         "geometry": {
           "type": "LineString",
-          "coordinates": []
-        }
-      },
-      {
-        "routeId": "route-2",
-        "distanceMeters": 3000,
-        "durationMinutes": 43,
-        "sensoryLevel": "HIGH",
-        "congestionLevel": "HIGH",
-        "crowdScore": 176,
-        "geometry": {
-          "type": "LineString",
-          "coordinates": []
+          "coordinates": [[144.9671, -37.8179], [144.9652, -37.8098]]
+        },
+        "recommended": true,
+        "warning": null,
+        "explanation": "Calculated using pedestrian crowd information and nearby refuge availability.",
+        "freshness": {
+          "observedAt": "2026-08-08T10:15:00+10:00",
+          "stale": false,
+          "fallbackUsed": false
         }
       }
     ]
@@ -132,40 +133,38 @@ This endpoint supports:
 }
 ```
 
-### Business Rules
+Accepted journeys return at least two distinct candidate routes. Routes sort by sensory score ascending, then duration ascending. Every route remains selectable. `warning` is non-null when high pedestrian density or stale/unavailable live data must be disclosed.
 
-- Return at most 3 routes.
-- Sort by shortest travel time.
-- Crowd score is derived from nearby pedestrian sensors.
-- Sensory level is calculated from crowd score.
+## `POST /refuges/search`
 
----
+Returns refuges within one kilometre of a journey route.
 
-# 3. Nearby Sensory Refuges
+Request:
 
-## GET /refuges
-
-Returns nearby sensory refuge locations.
-
-Supports:
-
-- US2.1
-
-### Query Parameters
-
-| Parameter | Required | Description                            |
-| --------- | -------- | -------------------------------------- |
-| latitude  | Yes      | Current latitude                       |
-| longitude | Yes      | Current longitude                      |
-| radius    | No       | Search radius in metres (default 1000) |
-
-Example
-
-```
-GET /refuges?latitude=-37.814&longitude=144.963&radius=1000
+```json
+{
+  "origin": {"latitude": -37.8179, "longitude": 144.9671},
+  "route": {
+    "type": "LineString",
+    "coordinates": [[144.9671, -37.8179], [144.9652, -37.8098]]
+  },
+  "categories": ["LIBRARY", "PARK"]
+}
 ```
 
-### Response
+Response uses the refuge shape documented under `GET /refuges`.
+
+## `GET /refuges`
+
+Query parameters:
+
+| Parameter | Required | Meaning |
+| --- | --- | --- |
+| `latitude` | Yes | Search-origin latitude. |
+| `longitude` | Yes | Search-origin longitude. |
+| `category` | No | `LIBRARY`, `MUSEUM`, `GARDEN`, or `PARK`. |
+
+Returns at most 20 refuges within one kilometre.
 
 ```json
 {
@@ -173,124 +172,49 @@ GET /refuges?latitude=-37.814&longitude=144.963&radius=1000
   "data": {
     "refuges": [
       {
-        "id": 102,
+        "id": "landmark-102",
         "name": "State Library Victoria",
         "category": "LIBRARY",
-        "latitude": -37.809,
-        "longitude": 144.965,
-        "distanceMeters": 450
-      },
-      {
-        "id": 211,
-        "name": "Carlton Gardens",
-        "category": "PARK",
-        "latitude": -37.806,
-        "longitude": 144.971,
-        "distanceMeters": 610
+        "coordinates": {"latitude": -37.8098, "longitude": 144.9652},
+        "walkingDistanceKm": 0.45,
+        "metadata": {"source": "City of Melbourne Open Data"},
+        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098,144.9652"
       }
     ]
   }
 }
 ```
 
----
+## `GET /congestion`
 
-# 4. Current Congestion
-
-## GET /congestion
-
-Returns current congestion information from pedestrian sensors.
-
-### Query Parameters
-
-| Parameter | Required | Description  |
-| --------- | -------- | ------------ |
-| bbox      | No       | Bounding box |
-
-Example
-
-```
-GET /congestion?bbox=144.95,-37.82,144.98,-37.80
-```
-
-### Response
+Returns current or fallback pedestrian conditions.
 
 ```json
 {
   "success": true,
   "data": {
-    "generatedAt": "2026-08-05T10:15:00Z",
-
     "sensors": [
       {
-        "sensorId": 34,
-        "sensorName": "Flinders Street",
-        "latitude": -37.817,
-        "longitude": 144.967,
+        "id": "34",
+        "name": "Flinders Street",
+        "indicator": "HIGH",
         "pedestrianCount": 158,
-        "congestionLevel": "HIGH",
-        "sensoryLevel": "HIGH"
+        "coordinates": {"latitude": -37.817, "longitude": 144.967},
+        "freshness": {
+          "observedAt": "2026-08-08T10:15:00+10:00",
+          "stale": false,
+          "fallbackUsed": false
+        }
       }
-    ]
+    ],
+    "freshness": {
+      "observedAt": "2026-08-08T10:15:00+10:00",
+      "stale": false,
+      "fallbackUsed": false
+    },
+    "staleWarning": null
   }
 }
 ```
 
----
-
-# Sensory Classification
-
-The backend derives sensory levels from pedestrian counts.
-
-| Pedestrian Count | Sensory Level |
-| ---------------- | ------------- |
-| 0-50             | LOW           |
-| 51-150           | MEDIUM        |
-| 151+             | HIGH          |
-
----
-
-# Data Sources
-
-The backend integrates:
-
-- Pedestrian Counting System - Past Hour (Counts per Minute)
-- Pedestrian Counting System - Sensor Locations
-- Pedestrian Counting System - Monthly Counts per Hour
-- Landmarks and Places of Interest
-
-The frontend never communicates directly with external APIs.
-
----
-
-# Authentication
-
-Current Version
-
-No authentication required.
-
-Future Version
-
-API Gateway JWT Authorizer (Amazon Cognito)
-
----
-
-# Rate Limits
-
-100 requests / minute / IP
-
----
-
-# Versioning
-
-Current Version
-
-```
-/v1
-```
-
-Future breaking changes will be released under:
-
-```
-/v2
-```
+The canonical TypeScript definitions are in `packages/shared/src/index.ts`.
