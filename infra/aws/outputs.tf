@@ -12,3 +12,43 @@ output "health_lambda_name" {
   description = "Name of the deployed health Lambda"
   value       = aws_lambda_function.health.function_name
 }
+
+output "database_endpoint" {
+  description = "Private RDS PostgreSQL hostname"
+  value       = aws_db_instance.postgres.address
+}
+
+output "database_port" {
+  description = "RDS PostgreSQL port"
+  value       = aws_db_instance.postgres.port
+}
+
+output "database_name" {
+  description = "Application database name"
+  value       = aws_db_instance.postgres.db_name
+}
+
+output "database_secret_arn" {
+  description = "ARN of the RDS-managed master-user secret"
+  value       = aws_db_instance.postgres.master_user_secret[0].secret_arn
+}
+
+output "lambda_security_group_id" {
+  description = "Security group ID for VPC Lambda functions"
+  value       = aws_security_group.lambda.id
+}
+
+output "rds_security_group_id" {
+  description = "Security group ID for the private PostgreSQL instance"
+  value       = aws_security_group.rds.id
+}
+
+output "public_subnet_ids" {
+  description = "IDs of the public subnets"
+  value       = aws_subnet.public[*].id
+}
+
+output "private_subnet_ids" {
+  description = "IDs of the private subnets"
+  value       = aws_subnet.private[*].id
+}
