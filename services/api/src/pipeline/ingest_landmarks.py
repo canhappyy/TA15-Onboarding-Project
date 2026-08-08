@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, text
 import pandas as pd
 
 import config
+from transforms import transform_landmarks
 
 COORD_RE = re.compile(r"^\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*$")
 
@@ -24,54 +25,34 @@ def _parse_coords(value):
 
 
 def load(csv_path=config.LANDMARKS_CSV, database_url: str = config.DATABASE_URL) -> dict:
-    df = pd.read_csv(csv_path, encoding="utf-8-sig")
-    df = df.rename(columns={"Sub Theme": "Sub_Theme", "Feature Name": "Feature_Name"})
-    df["Theme"] = df["Theme"].astype("string").str.strip()
-    df["Sub_Theme"] = df["Sub_Theme"].astype("string").str.strip()
-    df["Feature_Name"] = df["Feature_Name"].astype("string").str.strip()
-
-    # A landmark with no Theme/Sub Theme can't be filed into the
-    # Theme->Category chain, and one with no name is useless to show a
-    # user -- drop and say how many, rather than let a NaN "theme"
-    # become its own bogus category.
-    before = len(df)
-    df = df.dropna(subset=["Theme", "Sub_Theme", "Feature_Name"])
-    if len(df) < before:
-        print(f"  dropped {before - len(df)} landmark(s) missing Theme, Sub Theme, or Feature Name")
-
-    lat_lon = df["Co-ordinates"].apply(_parse_coords)
-    df["Latitude"] = lat_lon.apply(lambda t: t[0])
-    df["Longitude"] = lat_lon.apply(lambda t: t[1])
-    bad_coords = df["Latitude"].isna() | df["Longitude"].isna()
-    if bad_coords.any():
-        print(f"  {bad_coords.sum()} landmark(s) had unparseable coordinates "
-              f"(kept, but won't show up in radius-based refuge lookups)")
+    transformed = transform_landmarks(pd.read_csv(csv_path, encoding="utf-8-sig"))
+    df = pd.DataFrame.from_records(transformed["records"])
+    if transformed["rejected_count"]:
+        print(f"  dropped {transformed['rejected_count']} invalid landmark(s)")
 
     # Not dropped -- same feature name can  appear more than
     # once (e.g. a park with several distinct entry points)
-    dupe_names = df.duplicated(subset=["Feature_Name", "Theme", "Sub_Theme"]).sum()
+    dupe_names = df.duplicated(subset=["feature_name", "theme", "sub_theme"]).sum()
     if dupe_names:
         print(f"  note: {dupe_names} landmark(s) share a Feature Name + Theme + Sub Theme "
               f"with another row (kept -- verify these are distinct locations, not duplicate entries)")
 
     refuge_pairs = set(config.REFUGE_THEME_SUBTHEME_PAIRS)
 
-    themes = df[["Theme", "Sub_Theme"]].drop_duplicates().reset_index(drop=True)
+    themes = df[["theme", "sub_theme"]].drop_duplicates().reset_index(drop=True)
     themes["theme_id"] = themes.index + 1
     themes["category_id"] = themes.index + 1
-    themes["category_name"] = themes["Sub_Theme"].map(config.CATEGORY_DISPLAY_NAMES).fillna(
-        themes["Sub_Theme"]
+    themes["category_name"] = themes["sub_theme"].map(config.CATEGORY_DISPLAY_NAMES).fillna(
+        themes["sub_theme"]
     )
     themes["is_refuge"] = themes.apply(
-        lambda r: (r["Theme"], r["Sub_Theme"]) in refuge_pairs, axis=1
+        lambda r: (r["theme"], r["sub_theme"]) in refuge_pairs, axis=1
     )
-    themes = themes.rename(columns={"Theme": "theme", "Sub_Theme": "sub_theme"})
 
     df = df.merge(
         themes[["theme", "sub_theme", "category_id"]],
-        left_on=["Theme", "Sub_Theme"], right_on=["theme", "sub_theme"],
+        on=["theme", "sub_theme"],
     )
-    df = df.rename(columns={"Feature_Name": "feature_name", "Latitude": "latitude", "Longitude": "longitude"})
 
     engine = create_engine(database_url)
     with engine.begin() as conn:

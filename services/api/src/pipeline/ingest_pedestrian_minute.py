@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
 from clients.open_data_client import fetch_minute_counts
+from transforms import transform_minute_counts
 
 def _active_sensor_ids(conn) -> list[int]:
     rows = conn.execute(
@@ -49,20 +50,14 @@ def load(source: str = "csv", csv_path=config.MINUTE_COUNTS_CSV, database_url: s
     else:
         raise ValueError(f"Unknown source: {source!r} (expected 'csv' or 'api')")
 
-    raw = raw.rename(
-        columns={
-            "Location_ID": "location_id",
-            "Sensing_DateTime": "sensing_datetime",
-            "Direction_1": "direction_1_count",
-            "Direction_2": "direction_2_count",
-            "Total_of_Directions": "total_count",
-        }
-    )
-    before = len(raw)
-    raw = raw.drop_duplicates(subset=["sensing_datetime", "location_id"], keep="last")
-    dropped = before - len(raw)
-    if dropped:
-        print(f"pedestrian_minute_count: resolved {dropped} conflicting duplicate readings (kept latest)")
+    transformed = transform_minute_counts(raw)
+    raw = pd.DataFrame.from_records(transformed["records"])
+    if transformed["duplicates_resolved"]:
+        print(
+            "pedestrian_minute_count: resolved "
+            f"{transformed['duplicates_resolved']} conflicting duplicate readings "
+            "(kept latest)"
+        )
 
     timestamps = raw["sensing_datetime"].unique()
 
