@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
 
+INGESTION_LOCK_ID = 1_512_000_002
+
+
 @dataclass(frozen=True)
 class WriteStats:
     inserted: int
@@ -92,6 +95,22 @@ class IngestionRepository:
 
     def __init__(self, connection: Any):
         self._connection = connection
+
+    def try_acquire_ingestion_lock(self) -> bool:
+        """Acquire the process-wide session lock without waiting."""
+        with self._connection.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", (INGESTION_LOCK_ID,))
+            acquired = bool(cursor.fetchone()[0])
+        self._connection.commit()
+        return acquired
+
+    def release_ingestion_lock(self) -> bool:
+        """Release the process-wide session lock held by this connection."""
+        with self._connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_unlock(%s)", (INGESTION_LOCK_ID,))
+            released = bool(cursor.fetchone()[0])
+        self._connection.commit()
+        return released
 
     def upsert_sensors(self, records: Iterable[Mapping[str, Any]]) -> WriteStats:
         parameters = self._parameters(records, self.SENSOR_COLUMNS)

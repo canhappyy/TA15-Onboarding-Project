@@ -218,3 +218,20 @@ def test_existing_sensor_ids_empty_input_is_no_op():
 
     assert repository.read_existing_sensor_ids(set()) == set()
     assert cursor.statements == []
+
+
+def test_ingestion_advisory_lock_uses_dedicated_postgres_session_lock():
+    cursor = FakeCursor()
+    cursor.fetchone_values = [(True,), (True,)]
+    repository = IngestionRepository(FakeConnection(cursor))
+
+    acquired = repository.try_acquire_ingestion_lock()
+    released = repository.release_ingestion_lock()
+
+    acquire_statement, acquire_parameters = cursor.statements[0]
+    release_statement, release_parameters = cursor.statements[1]
+    assert "pg_try_advisory_lock" in acquire_statement
+    assert "pg_advisory_unlock" in release_statement
+    assert acquire_parameters == release_parameters
+    assert acquired is True
+    assert released is True

@@ -127,3 +127,21 @@ def test_caller_transaction_rolls_back_batch_and_checkpoint_together():
             cursor.execute("SELECT COUNT(*) FROM sensor_location WHERE location_id = 500")
             assert cursor.fetchone() == (0,)
         assert repository.read_checkpoint("sensors") is None
+
+
+@pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not configured")
+def test_ingestion_advisory_lock_excludes_other_database_sessions():
+    _prepare_database()
+
+    with (
+        psycopg.connect(DATABASE_URL) as first_connection,
+        psycopg.connect(DATABASE_URL) as second_connection,
+    ):
+        first = IngestionRepository(first_connection)
+        second = IngestionRepository(second_connection)
+
+        assert first.try_acquire_ingestion_lock() is True
+        assert second.try_acquire_ingestion_lock() is False
+        assert first.release_ingestion_lock() is True
+        assert second.try_acquire_ingestion_lock() is True
+        assert second.release_ingestion_lock() is True
