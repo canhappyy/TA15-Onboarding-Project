@@ -37,6 +37,26 @@ cat /tmp/rds-connectivity-response.json
 
 A successful check returns `{"status":"ok"}` without `FunctionError`.
 
+## Apply database migrations
+
+Terraform deploys an internal migration Lambda but does not invoke it. After
+`terraform apply`, run:
+
+```bash
+aws lambda invoke \
+  --region ap-southeast-4 \
+  --function-name "$(terraform output -raw database_migration_lambda_name)" \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{}' \
+  /tmp/database-migration-response.json
+
+cat /tmp/database-migration-response.json
+```
+
+Success reports the current migration version. Repeated invocation is safe and
+returns `"applied": 0` when the database is current. The migration Lambda has
+no API Gateway route and does not load application data.
+
 ## Configure location search
 
 Terraform creates the OpenRouteService secret without a value. After deployment,
