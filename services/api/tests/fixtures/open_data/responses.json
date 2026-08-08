@@ -1,0 +1,39 @@
+{
+  "sensors": {
+    "location_id": 3,
+    "sensor_description": "Melbourne Central",
+    "sensor_name": "Swa295_T",
+    "installation_date": "2009-03-25",
+    "status": "A",
+    "direction_1": "North",
+    "direction_2": "South",
+    "latitude": -37.81101524,
+    "longitude": 144.96429485
+  },
+  "minute": {
+    "location_id": 141,
+    "sensing_date": "2026-08-07",
+    "sensing_datetime": "2026-08-07T13:55:00+00:00",
+    "sensing_time": "23:55",
+    "direction_1": 8,
+    "direction_2": 0,
+    "total_of_directions": 8
+  },
+  "hourly": {
+    "location_id": 9,
+    "sensing_date": "2025-08-15",
+    "hourday": 6,
+    "direction_1": 28,
+    "direction_2": 191,
+    "pedestriancount": 219
+  },
+  "landmarks": {
+    "theme": "Leisure/Recreation",
+    "sub_theme": "Informal Outdoor Facility (Park/Garden/Reserve)",
+    "feature_name": "Flagstaff Gardens",
+    "co_ordinates": {
+      "lat": -37.8119,
+      "lon": 144.9545
+    }
+  }
+}
