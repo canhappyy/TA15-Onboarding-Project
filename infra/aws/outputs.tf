@@ -58,6 +58,11 @@ output "rds_connectivity_lambda_name" {
   value       = aws_lambda_function.rds_connectivity.function_name
 }
 
+output "database_migration_lambda_name" {
+  description = "Name of the internal Lambda used for manual database migrations"
+  value       = aws_lambda_function.database_migration.function_name
+}
+
 output "location_search_endpoint" {
   description = "Location-search endpoint"
   value       = "${aws_apigatewayv2_api.main.api_endpoint}/locations/search"
