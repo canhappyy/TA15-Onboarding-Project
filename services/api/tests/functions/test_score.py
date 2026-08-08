@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "functions"
 
 
 import pandas as pd
-from scoring_logic import (
+from src.functions.calculate_scores.scoring_logic import (
     _location_filter,
     calculate_thresholds,
     get_last_hour_total,
@@ -179,7 +179,7 @@ def test_classification_end_to_end():
     result = classify_current_conditions(thresholds, current_readings, hourly)
  
     assert len(result) == 2
-    assert set(result.columns) == {"location_id", "reading_used", "threshold", "level", "used_fallback", "observed_at"}
+    assert set(result.columns) == {"location_id", "reading_used", "threshold", "level", "used_fallback"}
     print("PASS: threshold -> current reading -> classify runs correctly end-to-end")
     print(result)
 

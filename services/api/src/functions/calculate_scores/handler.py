@@ -41,17 +41,27 @@ def lambda_handler(event, context):
         longitude = float(detail_row["longitude"]) if pd.notna(detail_row["longitude"]) else None
  
     body = {
-        "sensor_id": int(row["location_id"]),
-        "name": name,
-        "coordinates": {"latitude": latitude, "longitude": longitude},
-        "level": row["level"].upper(),
-        "sensory_level": row["sensory_level"].upper(),
-        "refuge_nearby": bool(row["refuge_nearby"]),
-        "reading_used": float(row["reading_used"]),
-        "threshold": float(row["threshold"]),
-        "used_fallback": bool(row["used_fallback"]),
-        "observed_at": _isoformat_or_none(row["observed_at"]),
-    }
+            "success": True,
+            "data": {
+                "id": str(row["location_id"]),
+                "name": name,
+                "coordinates": {"latitude": latitude, "longitude": longitude},
+                "indicator": row["level"].upper(),
+                "pedestrianCount": int(round(row["reading_used"])),
+
+                # sensory_level/refuge_nearby/threshold are NOT in api-contract.md's documented GET /congestion example
+                # kept for now, pending confirmation
+                "sensory_level": row["sensory_level"].upper(),
+                "refuge_nearby": bool(row["refuge_nearby"]),
+                "threshold": float(row["threshold"]),
+
+                "freshness": {
+                    "observedAt": _isoformat_or_none(row["observed_at"]),
+                    "stale": bool(row["used_fallback"]),
+                    "fallbackUsed": bool(row["used_fallback"]),
+                },
+            },
+        }
     return _response(200, body)
 
 
