@@ -281,11 +281,28 @@ Expected response
 ---
 
 # Data Pipeline Setup
-
-The pipeline (`services/api/src/pipeline/`) ingests pedestrian sensor data into PostgreSQL. Requires a local Postgres instance and a couple of data files.
-
+ 
+The pipeline (`services/api/src/pipeline/`) loads Melbourne's open pedestrian sensor, landmark, and refuge data into PostgreSQL. The app has nothing to query until this has run at least once. Requires a local Postgres instance and a couple of data files.
+ 
+**What it does, in order:**
+ 
+```
+build_schema.py           →  creates the 6 empty tables
+ingest_sensor_locations.py →  sensor metadata (must run before either count table -- they FK to it)
+ingest_pedestrian_minute.py → near-real-time minute-by-minute counts (current conditions)
+ingest_pedestrian_hourly.py → historical hourly counts (used to work out each sensor's "busy" threshold)
+ingest_landmarks.py        →  parks/gardens etc., tagged as sensory "refuges"
+```
+ 
+Each script can be run on its own, or all at once with:
+ 
+```bash
+cd services/api/src/pipeline
+python3 run_pipeline.py --reset
+```
+ 
 ## 1. Local Postgres
-
+ 
 ```bash
 brew install postgresql@16
 brew services start postgresql@16
@@ -294,34 +311,53 @@ psql postgres -c "CREATE DATABASE clearway OWNER clearway;"
 cd services/api/src/pipeline
 python3 build_schema.py --reset
 ```
-
+ 
 ## 2. Sensor locations
-
+ 
 Already committed to the repo at `services/api/src/pipeline/data/pedestrian-counting-system-sensor-locations.csv` (source: [Melbourne Open Data Portal](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-sensor-locations/), CC BY 3.0 AU). No download needed — just run:
-
+ 
 ```bash
 python3 ingest_sensor_locations.py
 ```
-
+ 
+This loads each sensor's name, status (active/decommissioned), and coordinates. Run this **before** either count script below — they reference `location_id` as a foreign key, so a count row for a sensor Postgres doesn't know about yet will be rejected.
+ 
 ## 3. Minute counts
-
-Use the live API — no download needed:
-
+ 
+Near-real-time pedestrian counts, used to work out how busy a sensor is *right now*. Use the live API — no download needed:
+ 
 ```bash
 python3 -c "from ingest_pedestrian_minute import load; load(source='api')"
 ```
-
+ 
 A CSV-based backfill path also exists (`load(source='csv')`) for testing against historical data — see `MINUTE_COUNTS_CSV` in `config.py` for the expected file path if needed.
-
+ 
+**Gap handling:** if an active sensor has no reading for a given minute, that's treated as "no reading = zero pedestrians" — the script fills it in with a `0` and flags the row `is_imputed = true`, rather than leaving a hole.
+ 
 ## 4. Hourly counts
-
-Large file (~1.6M rows), no live equivalent, so it must be downloaded manually if you're working on `ingest_pedestrian_hourly.py`:
-
+ 
+Historical hourly counts, used to work out each sensor's normal "busy" threshold (currently: top 25% of its own past hourly counts). Large file (~1.6M rows), no live equivalent, so it must be downloaded manually if you're working on `ingest_pedestrian_hourly.py`:
+ 
 1. Download the CSV from [here](https://data.melbourne.vic.gov.au/explore/dataset/pedestrian-counting-system-monthly-counts-per-hour/export/)
 2. Place it at `services/api/src/pipeline/data/pedestrian-counting-system-monthly-counts-per-hour.csv`
-
 **Note:** always use the portal's CSV export (`/export/` page), not data pulled via the live API — the two use different column naming conventions (`Location_ID` vs `location_id`), and the ingest scripts expect the CSV export's format.
-
+ 
+**Gap handling:** unlike minute counts, a missing (sensor, hour) here is treated as "sensor was offline", not "zero pedestrians" — the script does **not** fabricate rows for it. Sensor-days with fewer than 24 hourly readings are just logged as a data-quality note.
+ 
+**Timestamps:** the CSV's date + hour columns are combined into a proper Melbourne local timestamp (`Australia/Melbourne`), correctly accounting for daylight saving (AEST `+10:00` in winter vs AEDT `+11:00` in summer) rather than a fixed offset — this keeps hourly timestamps aligned with the minute-count data, which uses the same timezone-aware approach.
+ 
+**Unknown sensors:** if the file references a `location_id` not present in `sensor_location` (e.g. a decommissioned sensor), the script inserts a minimal stub row for it (`status = 'D'`) so the historical data can still be loaded without breaking the foreign key.
+ 
+## 5. Landmarks and refuges
+ 
+Parks, gardens, and other places of interest, used to identify nearby sensory "refuges". Already committed to the repo at `services/api/src/pipeline/data/landmarks-and-places-of-interest-including-schools-theatres-health-services-spor.csv` (source: [Melbourne Open Data Portal](https://data.melbourne.vic.gov.au/explore/dataset/landmarks-and-places-of-interest-including-schools-theatres-health-services-spor/)). No download needed — just run:
+ 
+```bash
+python3 ingest_landmarks.py
+```
+ 
+Each landmark is grouped by Theme/Sub-Theme, and only categories listed in `config.REFUGE_THEME_SUBTHEME_PAIRS` (currently just parks/gardens) are flagged `is_refuge = true`. Downstream queries filter on that flag rather than re-checking the theme every time.
+ 
 ---
 
 # Environment Variables
