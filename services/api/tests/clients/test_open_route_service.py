@@ -32,7 +32,7 @@ def test_geocoder_builds_bounded_request_and_parses_features():
         request_json=request_json,
     ).search("State Library", bounds=MELBOURNE_BOUNDS, limit=10)
 
-    assert captured["url"] == "https://api.openrouteservice.org/geocode/search"
+    assert captured["url"] == "https://api.heigit.org/pelias/v1/search"
     assert captured["timeout"] == 5
     assert captured["params"] == {
         "api_key": "secret-key",
@@ -84,4 +84,3 @@ def test_geocoder_rejects_malformed_responses(payload):
             "secret-key",
             request_json=lambda url, params, timeout: payload,
         ).search("Library", bounds=MELBOURNE_BOUNDS)
-
