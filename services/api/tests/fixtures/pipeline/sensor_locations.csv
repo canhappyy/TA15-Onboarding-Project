@@ -1,0 +1,5 @@
+Location_ID,Sensor_Description,Sensor_Name,Installation_Date,Note,Location_Type,Status,Direction_1,Direction_2,Latitude,Longitude
+1, Library entrance ,Library South,2020-01-02, first record ,Outdoor,A,North,South,-37.8100,144.9600
+2,Museum entrance,City Museum,not-a-date,, Outdoor ,A,East,West,invalid,144.9700
+1, Library entrance updated , Library North ,2021-03-04, latest record , Outdoor , A ,North,South,-37.8110,144.9610
+,Missing identifier,Ignored Sensor,2022-01-01,,Outdoor,A,North,South,-37.8000,144.9500

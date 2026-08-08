@@ -1,0 +1,66 @@
+{
+  "sensor_locations": {
+    "legacy": {
+      "row_count": 2,
+      "location_ids": [1, 2],
+      "duplicate_precedence": "last",
+      "write_operation": "delete_then_insert"
+    },
+    "target": {
+      "row_count": 2,
+      "location_ids": [1, 2],
+      "duplicate_precedence": "last",
+      "write_operation": "upsert"
+    }
+  },
+  "minute_counts": {
+    "legacy": {
+      "row_count": 3,
+      "observed_count": 2,
+      "imputed_count": 1,
+      "duplicate_last_total": 15,
+      "write_operation_csv": "delete_then_insert",
+      "write_operation_api": "staging_upsert"
+    },
+    "target": {
+      "row_count": 2,
+      "observed_count": 2,
+      "imputed_count": 0,
+      "duplicate_last_total": 15,
+      "write_operation": "direct_upsert"
+    }
+  },
+  "hourly_counts": {
+    "legacy": {
+      "row_count": 3,
+      "timestamps": [
+        "2026-06-15T08:00:00+10:00",
+        "2026-06-15T09:00:00+10:00",
+        "2026-12-15T14:00:00+10:00"
+      ],
+      "write_operation": "delete_then_insert"
+    },
+    "target": {
+      "row_count": 3,
+      "timestamps": [
+        "2026-06-15T08:00:00+10:00",
+        "2026-06-15T09:00:00+10:00",
+        "2026-12-15T14:00:00+11:00"
+      ],
+      "write_operation": "upsert"
+    }
+  },
+  "landmarks": {
+    "legacy": {
+      "landmark_count": 5,
+      "refuge_category_count": 1,
+      "recognized_refuge_categories": ["PARK_GARDEN"],
+      "write_operation": "delete_reset_insert"
+    },
+    "target": {
+      "landmark_count": 5,
+      "recognized_refuge_categories": ["LIBRARY", "MUSEUM", "GARDEN", "PARK"],
+      "write_operation": "upsert"
+    }
+  }
+}
