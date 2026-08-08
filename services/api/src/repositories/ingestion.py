@@ -244,6 +244,21 @@ class IngestionRepository:
             row = cursor.fetchone()
         return IngestionCheckpoint(*row) if row else None
 
+    def read_existing_sensor_ids(self, location_ids: Iterable[int]) -> set[int]:
+        location_ids = sorted(set(location_ids))
+        if not location_ids:
+            return set()
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT location_id
+                FROM sensor_location
+                WHERE location_id = ANY(%s)
+                """,
+                (location_ids,),
+            )
+            return {row[0] for row in cursor.fetchall()}
+
     def _upsert_counts(
         self,
         records: Iterable[Mapping[str, Any]],

@@ -15,6 +15,7 @@ class FakeCursor:
         self.batches = []
         self.outcomes = []
         self.fetchone_values = []
+        self.fetchall_values = []
         self.outcome_index = 0
         self.batch_results_active = False
 
@@ -42,6 +43,9 @@ class FakeCursor:
         if self.batch_results_active:
             return (self.outcomes[self.outcome_index],)
         return self.fetchone_values.pop(0) if self.fetchone_values else None
+
+    def fetchall(self):
+        return self.fetchall_values.pop(0) if self.fetchall_values else []
 
 
 class FakeConnection:
@@ -190,3 +194,25 @@ def test_empty_upserts_are_no_ops():
     assert repository.upsert_hourly_counts([]) == WriteStats(0, 0)
     assert repository.upsert_landmarks([]) == WriteStats(0, 0)
     assert cursor.batches == []
+
+
+def test_existing_sensor_ids_queries_only_requested_ids():
+    cursor = FakeCursor()
+    cursor.fetchall_values = [[(1,), (3,)]]
+    repository = IngestionRepository(FakeConnection(cursor))
+
+    result = repository.read_existing_sensor_ids({1, 2, 3})
+
+    statement, parameters = cursor.statements[0]
+    assert "FROM sensor_location" in statement
+    assert "location_id = ANY(%s)" in statement
+    assert parameters == ([1, 2, 3],)
+    assert result == {1, 3}
+
+
+def test_existing_sensor_ids_empty_input_is_no_op():
+    cursor = FakeCursor()
+    repository = IngestionRepository(FakeConnection(cursor))
+
+    assert repository.read_existing_sensor_ids(set()) == set()
+    assert cursor.statements == []
