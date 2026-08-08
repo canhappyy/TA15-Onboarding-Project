@@ -167,12 +167,17 @@ class IngestionRepository:
                     """
                     INSERT INTO landmark_category (
                         theme_id, category_name, is_refuge
-                    ) VALUES (%s, %s, false)
+                    ) VALUES (%s, %s, %s)
                     ON CONFLICT (theme_id, category_name) DO UPDATE
-                        SET category_name = EXCLUDED.category_name
+                        SET category_name = EXCLUDED.category_name,
+                            is_refuge = EXCLUDED.is_refuge
                     RETURNING category_id
                     """,
-                    (theme_id, record.get("sub_theme")),
+                    (
+                        theme_id,
+                        record.get("sub_theme"),
+                        record.get("refuge_category") is not None,
+                    ),
                 )
                 category_id = cursor.fetchone()[0]
                 landmark_parameters.append(

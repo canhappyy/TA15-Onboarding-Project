@@ -1,26 +1,38 @@
-"""Pure row normalization shared by bootstrap and scheduled ingestion."""
+"""Reusable pandas transformations shared by local and Lambda ingestion."""
 
 from __future__ import annotations
 
 import math
 import re
-from datetime import date, datetime, timezone
-from typing import Any, Iterable, Mapping
+from datetime import date, datetime
+from typing import Any
 from zoneinfo import ZoneInfo
+
+import pandas as pd
 
 
 MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
 COORDINATES_PATTERN = re.compile(
     r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$"
 )
+REFUGE_CATEGORIES = {
+    "library": "LIBRARY",
+    "museum": "MUSEUM",
+    "garden": "GARDEN",
+    "public garden": "GARDEN",
+    "park": "PARK",
+    "public park": "PARK",
+    "informal outdoor facility (park/garden/reserve)": "PARK",
+}
 
 
-def normalize_sensors(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    records_by_id: dict[int, dict[str, Any]] = {}
+def transform_sensors(frame: pd.DataFrame) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    positions: dict[int, int] = {}
     rejected: list[dict[str, Any]] = []
-    duplicates_resolved = 0
+    duplicates = 0
 
-    for index, row in enumerate(rows):
+    for index, row in frame.iterrows():
         raw_location_id = _value(row, "Location_ID", "location_id")
         if _is_blank(raw_location_id):
             rejected.append(_rejection(index, "MISSING_LOCATION_ID"))
@@ -52,24 +64,33 @@ def normalize_sensors(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             "latitude": _float_or_none(_value(row, "Latitude", "latitude")),
             "longitude": _float_or_none(_value(row, "Longitude", "longitude")),
         }
-        if location_id in records_by_id:
-            duplicates_resolved += 1
-        records_by_id[location_id] = record
+        if location_id in positions:
+            duplicates += 1
+            records[positions[location_id]] = record
+        else:
+            positions[location_id] = len(records)
+            records.append(record)
 
-    return _result(list(records_by_id.values()), rejected, duplicates_resolved)
+    return _result(records, rejected, duplicates)
 
 
-def normalize_minute_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    records_by_key: dict[tuple[int, str], dict[str, Any]] = {}
+def transform_minute_counts(frame: pd.DataFrame) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    positions: dict[tuple[int, str], int] = {}
     rejected: list[dict[str, Any]] = []
-    duplicates_resolved = 0
+    duplicates = 0
 
-    for index, row in enumerate(rows):
+    for index, row in frame.iterrows():
         try:
             location_id = _required_location_id(row)
             sensing_datetime = _minute_datetime(row)
             total_count = _required_count(
-                _value(row, "Total_of_Directions", "total_of_directions", "total_count")
+                _value(
+                    row,
+                    "Total_of_Directions",
+                    "total_of_directions",
+                    "total_count",
+                )
             )
             direction_1 = _optional_count(
                 _value(row, "Direction_1", "direction_1", "direction_1_count")
@@ -77,7 +98,7 @@ def normalize_minute_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]
             direction_2 = _optional_count(
                 _value(row, "Direction_2", "direction_2", "direction_2_count")
             )
-        except NormalizationError as error:
+        except TransformError as error:
             rejected.append(_rejection(index, error.code))
             continue
 
@@ -90,19 +111,23 @@ def normalize_minute_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]
             "is_imputed": False,
         }
         key = (location_id, sensing_datetime)
-        if key in records_by_key:
-            duplicates_resolved += 1
-        records_by_key[key] = record
+        if key in positions:
+            duplicates += 1
+            records[positions[key]] = record
+        else:
+            positions[key] = len(records)
+            records.append(record)
 
-    return _result(list(records_by_key.values()), rejected, duplicates_resolved)
+    return _result(records, rejected, duplicates)
 
 
-def normalize_hourly_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    records_by_key: dict[tuple[int, str], dict[str, Any]] = {}
+def transform_hourly_counts(frame: pd.DataFrame) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    keys: set[tuple[int, str]] = set()
     rejected: list[dict[str, Any]] = []
-    duplicates_resolved = 0
+    duplicates = 0
 
-    for index, row in enumerate(rows):
+    for index, row in frame.iterrows():
         try:
             location_id = _required_location_id(row)
             sensing_datetime = _hourly_datetime(row)
@@ -121,31 +146,34 @@ def normalize_hourly_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]
             direction_2 = _optional_count(
                 _value(row, "Direction_2", "direction_2", "direction_2_count")
             )
-        except NormalizationError as error:
+        except TransformError as error:
             rejected.append(_rejection(index, error.code))
             continue
 
         key = (location_id, sensing_datetime)
-        if key in records_by_key:
-            duplicates_resolved += 1
+        if key in keys:
+            duplicates += 1
             continue
-        records_by_key[key] = {
-            "location_id": location_id,
-            "sensing_datetime": sensing_datetime,
-            "direction_1_count": direction_1,
-            "direction_2_count": direction_2,
-            "total_count": total_count,
-            "is_imputed": False,
-        }
+        keys.add(key)
+        records.append(
+            {
+                "location_id": location_id,
+                "sensing_datetime": sensing_datetime,
+                "direction_1_count": direction_1,
+                "direction_2_count": direction_2,
+                "total_count": total_count,
+                "is_imputed": False,
+            }
+        )
 
-    return _result(list(records_by_key.values()), rejected, duplicates_resolved)
+    return _result(records, rejected, duplicates)
 
 
-def normalize_landmarks(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+def transform_landmarks(frame: pd.DataFrame) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
 
-    for index, row in enumerate(rows):
+    for index, row in frame.iterrows():
         theme = _text(_value(row, "Theme", "theme"))
         sub_theme = _text(_value(row, "Sub Theme", "Sub_Theme", "sub_theme"))
         feature_name = _text(
@@ -169,13 +197,14 @@ def normalize_landmarks(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                 "feature_name": feature_name,
                 "latitude": latitude,
                 "longitude": longitude,
+                "refuge_category": _refuge_category(sub_theme),
             }
         )
 
     return _result(records, rejected, duplicates_resolved=0)
 
 
-class NormalizationError(ValueError):
+class TransformError(ValueError):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
@@ -194,13 +223,13 @@ def _result(
     }
 
 
-def _rejection(index: int, code: str) -> dict[str, Any]:
-    return {"index": index, "code": code}
+def _rejection(index: Any, code: str) -> dict[str, Any]:
+    return {"index": int(index), "code": code}
 
 
-def _value(row: Mapping[str, Any], *keys: str) -> Any:
+def _value(row: pd.Series, *keys: str) -> Any:
     for key in keys:
-        if key in row:
+        if key in row.index:
             return row[key]
     return None
 
@@ -210,44 +239,44 @@ def _is_blank(value: Any) -> bool:
         return True
     if isinstance(value, str):
         return not value.strip()
-    return isinstance(value, float) and math.isnan(value)
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def _text(value: Any) -> str | None:
-    if _is_blank(value):
-        return None
-    return str(value).strip()
+    return None if _is_blank(value) else str(value).strip()
 
 
 def _integer(value: Any) -> int:
     if isinstance(value, bool) or _is_blank(value):
         raise ValueError
-    if isinstance(value, float):
-        if not value.is_integer():
-            raise ValueError
-        return int(value)
-    return int(str(value).strip())
+    number = float(str(value).strip())
+    if not math.isfinite(number) or not number.is_integer():
+        raise ValueError
+    return int(number)
 
 
-def _required_location_id(row: Mapping[str, Any]) -> int:
+def _required_location_id(row: pd.Series) -> int:
     value = _value(row, "Location_ID", "location_id")
     if _is_blank(value):
-        raise NormalizationError("MISSING_LOCATION_ID")
+        raise TransformError("MISSING_LOCATION_ID")
     try:
         return _integer(value)
     except (TypeError, ValueError) as error:
-        raise NormalizationError("INVALID_LOCATION_ID") from error
+        raise TransformError("INVALID_LOCATION_ID") from error
 
 
 def _required_count(value: Any) -> int:
     if _is_blank(value):
-        raise NormalizationError("MISSING_TOTAL_COUNT")
+        raise TransformError("MISSING_TOTAL_COUNT")
     try:
         count = _integer(value)
     except (TypeError, ValueError) as error:
-        raise NormalizationError("INVALID_TOTAL_COUNT") from error
+        raise TransformError("INVALID_TOTAL_COUNT") from error
     if count < 0:
-        raise NormalizationError("INVALID_TOTAL_COUNT")
+        raise TransformError("INVALID_TOTAL_COUNT")
     return count
 
 
@@ -257,9 +286,9 @@ def _optional_count(value: Any) -> int | None:
     try:
         count = _integer(value)
     except (TypeError, ValueError) as error:
-        raise NormalizationError("INVALID_DIRECTION_COUNT") from error
+        raise TransformError("INVALID_DIRECTION_COUNT") from error
     if count < 0:
-        raise NormalizationError("INVALID_DIRECTION_COUNT")
+        raise TransformError("INVALID_DIRECTION_COUNT")
     return count
 
 
@@ -270,10 +299,8 @@ def _date_or_none(value: Any) -> str | None:
         return value.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
-    try:
-        return date.fromisoformat(str(value).strip()).isoformat()
-    except ValueError:
-        return None
+    parsed = pd.to_datetime(value, errors="coerce")
+    return None if pd.isna(parsed) else parsed.date().isoformat()
 
 
 def _float_or_none(value: Any) -> float | None:
@@ -286,81 +313,64 @@ def _float_or_none(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def _minute_datetime(row: Mapping[str, Any]) -> str:
+def _minute_datetime(row: pd.Series) -> str:
     sensing_date = _value(row, "sensing_date", "Sensing_Date")
     sensing_time = _value(row, "sensing_time", "Sensing_Time")
     if not _is_blank(sensing_date) and not _is_blank(sensing_time):
         try:
-            naive = datetime.strptime(
-                f"{str(sensing_date).strip()} {str(sensing_time).strip()}",
-                "%Y-%m-%d %H:%M",
-            )
-        except ValueError as error:
-            raise NormalizationError("INVALID_TIMESTAMP") from error
-        return _localize_melbourne(naive).isoformat()
+            naive = pd.Timestamp(f"{str(sensing_date).strip()} {str(sensing_time).strip()}")
+            return naive.tz_localize(
+                MELBOURNE_TZ, ambiguous=True, nonexistent="shift_forward"
+            ).isoformat()
+        except (TypeError, ValueError) as error:
+            raise TransformError("INVALID_TIMESTAMP") from error
 
     value = _value(row, "Sensing_DateTime", "sensing_datetime")
     if _is_blank(value):
-        raise NormalizationError("MISSING_TIMESTAMP")
+        raise TransformError("MISSING_TIMESTAMP")
     try:
-        parsed = _parse_datetime(value)
+        parsed = pd.Timestamp(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.tz_localize(
+                MELBOURNE_TZ, ambiguous=True, nonexistent="shift_forward"
+            )
+        return parsed.isoformat()
     except (TypeError, ValueError) as error:
-        raise NormalizationError("INVALID_TIMESTAMP") from error
-    if parsed.tzinfo is None:
-        parsed = _localize_melbourne(parsed)
-    return parsed.isoformat()
+        raise TransformError("INVALID_TIMESTAMP") from error
 
 
-def _hourly_datetime(row: Mapping[str, Any]) -> str:
+def _hourly_datetime(row: pd.Series) -> str:
     raw_date = _value(row, "Sensing_Date", "sensing_date")
     raw_hour = _value(row, "HourDay", "hourday", "hour_day")
     if _is_blank(raw_date) or _is_blank(raw_hour):
-        raise NormalizationError("MISSING_TIMESTAMP")
+        raise TransformError("MISSING_TIMESTAMP")
     try:
-        sensing_date = date.fromisoformat(str(raw_date).strip())
         hour = _integer(raw_hour)
         if hour < 0 or hour > 23:
             raise ValueError
+        naive = pd.Timestamp(f"{str(raw_date).strip()} {hour:02d}:00:00")
+        return naive.tz_localize(
+            MELBOURNE_TZ, ambiguous=True, nonexistent="shift_forward"
+        ).isoformat()
     except (TypeError, ValueError) as error:
-        raise NormalizationError("INVALID_TIMESTAMP") from error
-    naive = datetime.combine(sensing_date, datetime.min.time()).replace(hour=hour)
-    return _localize_melbourne(naive).isoformat()
+        raise TransformError("INVALID_TIMESTAMP") from error
 
 
-def _parse_datetime(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip().replace("Z", "+00:00")
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        for pattern in ("%m/%d/%Y %I:%M:%S %p", "%Y-%m-%d %H:%M:%S"):
-            try:
-                return datetime.strptime(text, pattern)
-            except ValueError:
-                continue
-    raise ValueError
-
-
-def _localize_melbourne(naive: datetime) -> datetime:
-    candidate = naive.replace(tzinfo=MELBOURNE_TZ, fold=0)
-    normalized = candidate.astimezone(timezone.utc).astimezone(MELBOURNE_TZ)
-    if normalized.replace(tzinfo=None) != naive:
-        return normalized
-    return candidate
-
-
-def _coordinates(row: Mapping[str, Any]) -> tuple[float | None, float | None]:
+def _coordinates(row: pd.Series) -> tuple[float | None, float | None]:
     value = _value(row, "Co-ordinates", "co_ordinates", "coordinates")
     if isinstance(value, str):
         match = COORDINATES_PATTERN.match(value)
-        if match:
-            return float(match.group(1)), float(match.group(2))
-        return None, None
-    if isinstance(value, Mapping):
         return (
-            _float_or_none(_value(value, "lat", "latitude")),
-            _float_or_none(_value(value, "lon", "lng", "longitude")),
+            (float(match.group(1)), float(match.group(2)))
+            if match
+            else (None, None)
+        )
+    if isinstance(value, dict):
+        return (
+            _float_or_none(value.get("lat", value.get("latitude"))),
+            _float_or_none(
+                value.get("lon", value.get("lng", value.get("longitude")))
+            ),
         )
     if isinstance(value, (list, tuple)) and len(value) == 2:
         return _float_or_none(value[0]), _float_or_none(value[1])
@@ -368,3 +378,7 @@ def _coordinates(row: Mapping[str, Any]) -> tuple[float | None, float | None]:
         _float_or_none(_value(row, "Latitude", "latitude")),
         _float_or_none(_value(row, "Longitude", "longitude")),
     )
+
+
+def _refuge_category(sub_theme: str) -> str | None:
+    return REFUGE_CATEGORIES.get(sub_theme.casefold())

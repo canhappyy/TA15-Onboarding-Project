@@ -176,6 +176,17 @@ def test_static_sync_writes_sensors_before_landmarks_with_checkpoints():
     assert all(connection.committed for connection in store.connections)
 
 
+def test_static_sync_passes_required_refuge_classification_to_repository():
+    service, store, _client = build_service()
+
+    service.run("static")
+
+    landmark_write = next(
+        call for call in store.calls if call[0] == "upsert_landmarks"
+    )
+    assert landmark_write[1][0]["refuge_category"] == "LIBRARY"
+
+
 def test_minute_sync_uses_checkpoint_overlap_and_commits_checkpoint_atomically():
     service, store, client = build_service()
     watermark = datetime(2026, 8, 8, 10, tzinfo=timezone.utc)

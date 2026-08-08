@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from src.ingestion.normalizers import (
+from src.ingestion.pandas_adapter import (
     normalize_hourly_counts,
     normalize_landmarks,
     normalize_minute_counts,
@@ -138,6 +138,12 @@ def test_landmark_normalizer_preserves_raw_categories_duplicates_and_null_coordi
     assert result["duplicates_resolved"] == 0
     assert [record["feature_name"] for record in result["records"]].count("Flagstaff Gardens") == 2
     assert result["records"][3]["latitude"] is None
+    assert {record["refuge_category"] for record in result["records"]} == {
+        "LIBRARY",
+        "MUSEUM",
+        "GARDEN",
+        "PARK",
+    }
     assert {(record["theme"], record["sub_theme"]) for record in result["records"]} >= {
         ("Community Use", "Library"),
         ("Place of Assembly", "Museum"),
@@ -145,9 +151,16 @@ def test_landmark_normalizer_preserves_raw_categories_duplicates_and_null_coordi
     }
 
 
-def test_normalizers_have_no_pandas_numpy_sqlalchemy_or_database_dependency():
-    import src.ingestion.normalizers as normalizers
+def test_landmark_normalizer_does_not_treat_car_parks_as_refuges():
+    result = normalize_landmarks(
+        [
+            {
+                "Theme": "Transport",
+                "Sub Theme": "Car Park",
+                "Feature Name": "CBD Parking",
+                "Co-ordinates": "-37.81, 144.96",
+            }
+        ]
+    )
 
-    source = Path(normalizers.__file__).read_text()
-    for dependency in ("pandas", "numpy", "sqlalchemy", "psycopg"):
-        assert dependency not in source
+    assert result["records"][0]["refuge_category"] is None

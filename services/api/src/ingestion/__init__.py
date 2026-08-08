@@ -1,6 +1,6 @@
-"""Lightweight data ingestion domain logic."""
+"""Data ingestion domain logic."""
 
-from .normalizers import (
+from .pandas_adapter import (
     normalize_hourly_counts,
     normalize_landmarks,
     normalize_minute_counts,
