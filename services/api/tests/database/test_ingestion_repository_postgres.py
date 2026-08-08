@@ -13,7 +13,7 @@ from src.functions.database_migration.handler import (  # noqa: E402
     PsycopgMigrationRunner,
     load_migrations,
 )
-from src.ingestion.normalizers import (  # noqa: E402
+from src.ingestion.pandas_adapter import (  # noqa: E402
     normalize_hourly_counts,
     normalize_landmarks,
     normalize_minute_counts,

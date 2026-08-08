@@ -114,7 +114,7 @@ def test_count_upserts_use_composite_keys(method_name, table_name, conflict_key)
     assert stats == WriteStats(inserted=1, updated=0)
 
 
-def test_landmark_upsert_preserves_raw_category_and_uses_natural_key():
+def test_landmark_upsert_persists_refuge_category_and_uses_natural_key():
     cursor = FakeCursor()
     cursor.fetchone_values = [(10,), (20,)]
     cursor.outcomes = [True]
@@ -128,6 +128,7 @@ def test_landmark_upsert_preserves_raw_category_and_uses_natural_key():
                 "feature_name": "City Library",
                 "latitude": -37.8175,
                 "longitude": 144.9652,
+                "refuge_category": "LIBRARY",
             }
         ]
     )
@@ -136,7 +137,8 @@ def test_landmark_upsert_preserves_raw_category_and_uses_natural_key():
     landmark_statement, landmark_parameters, returning = cursor.batches[0]
     assert "ON CONFLICT (theme, sub_theme)" in statements
     assert "ON CONFLICT (theme_id, category_name)" in statements
-    assert cursor.statements[1][1][1] == "Library"
+    assert cursor.statements[1][1] == (10, "Library", True)
+    assert "is_refuge = EXCLUDED.is_refuge" in statements
     assert "ON CONFLICT (category_id, feature_name, latitude, longitude)" in landmark_statement
     assert landmark_parameters[0]["category_id"] == 20
     assert returning is True

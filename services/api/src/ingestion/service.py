@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from src.ingestion.normalizers import (
+from src.ingestion.pandas_adapter import (
     normalize_hourly_counts,
     normalize_landmarks,
     normalize_minute_counts,
