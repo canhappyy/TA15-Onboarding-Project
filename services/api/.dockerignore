@@ -1,0 +1,8 @@
+**/__pycache__
+**/*.py[cod]
+.env
+.env.*
+tests
+requirements-dev.txt
+src/pipeline/PIPELINE_GUIDE.md
+src/pipeline/data
