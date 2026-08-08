@@ -23,7 +23,9 @@ MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
 MINUTE_OVERLAP = timedelta(minutes=30)
 HOURLY_OVERLAP_DAYS = 1
 BOOTSTRAP_DAYS = 90
-SUPPORTED_MODES = frozenset({"bootstrap", "minute", "hourly", "static"})
+SUPPORTED_MODES = frozenset(
+    {"bootstrap", "minute", "hourly", "static", "status"}
+)
 
 
 class IngestionService:
@@ -44,6 +46,9 @@ class IngestionService:
         if mode not in SUPPORTED_MODES:
             raise ValueError(f"Unsupported ingestion mode: {mode}")
 
+        if mode == "status":
+            return self._read_status()
+
         with self._connection_factory() as lock_connection:
             lock_repository = self._repository_factory(lock_connection)
             if not lock_repository.try_acquire_ingestion_lock():
@@ -57,6 +62,12 @@ class IngestionService:
                 return self._run_locked(mode)
             finally:
                 lock_repository.release_ingestion_lock()
+
+    def _read_status(self) -> dict[str, Any]:
+        with self._connection_factory() as connection:
+            repository = self._repository_factory(connection)
+            status = repository.read_ingestion_status()
+        return {"mode": "status", **self._json_safe(status)}
 
     def _run_locked(self, mode: str) -> dict[str, Any]:
         datasets: dict[str, dict[str, int]] = {}
@@ -299,3 +310,16 @@ class IngestionService:
             (record["sensing_datetime"] for record in records),
             key=lambda value: datetime.fromisoformat(value.replace("Z", "+00:00")),
         )
+
+    @staticmethod
+    def _json_safe(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: IngestionService._json_safe(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [IngestionService._json_safe(item) for item in value]
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        return value

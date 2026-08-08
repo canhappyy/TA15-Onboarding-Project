@@ -268,6 +268,134 @@ class IngestionRepository:
             row = cursor.fetchone()
         return IngestionCheckpoint(*row) if row else None
 
+    def read_ingestion_status(self) -> dict[str, Any]:
+        """Return sanitized table and checkpoint statistics for smoke checks."""
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*),
+                    COUNT(*) FILTER (
+                        WHERE status = 'A'
+                            AND latitude IS NOT NULL
+                            AND longitude IS NOT NULL
+                    )
+                FROM sensor_location
+                """
+            )
+            sensor_rows, active_with_coordinates = cursor.fetchone()
+
+            cursor.execute(
+                """
+                SELECT COUNT(*),
+                    COUNT(*) FILTER (WHERE is_imputed = FALSE),
+                    COUNT(*) FILTER (WHERE is_imputed = TRUE),
+                    MAX(sensing_datetime)
+                FROM pedestrian_minute_count
+                """
+            )
+            minute_rows, minute_observed, minute_imputed, latest_minute = (
+                cursor.fetchone()
+            )
+
+            cursor.execute(
+                """
+                SELECT COUNT(*),
+                    COUNT(*) FILTER (WHERE is_imputed = FALSE),
+                    COUNT(*) FILTER (WHERE is_imputed = TRUE),
+                    MAX(sensing_datetime)
+                FROM pedestrian_hourly_count
+                """
+            )
+            hourly_rows, hourly_observed, hourly_imputed, latest_hourly = (
+                cursor.fetchone()
+            )
+
+            cursor.execute(
+                """
+                SELECT COUNT(*),
+                    COUNT(*) FILTER (WHERE category.is_refuge = TRUE)
+                FROM landmark
+                JOIN landmark_category AS category
+                    ON category.category_id = landmark.category_id
+                """
+            )
+            landmark_rows, refuge_rows = cursor.fetchone()
+
+            cursor.execute(
+                """
+                SELECT UPPER(category.category_name), COUNT(*)
+                FROM landmark
+                JOIN landmark_category AS category
+                    ON category.category_id = landmark.category_id
+                WHERE category.is_refuge = TRUE
+                GROUP BY UPPER(category.category_name)
+                ORDER BY UPPER(category.category_name)
+                """
+            )
+            refuges_by_category = dict(cursor.fetchall())
+
+            cursor.execute(
+                """
+                SELECT dataset, status, watermark, last_completed_at,
+                    inserted_count, updated_count, rejected_count,
+                    duplicates_resolved
+                FROM ingestion_checkpoint
+                ORDER BY dataset
+                """
+            )
+            checkpoint_rows = cursor.fetchall()
+
+        checkpoints = {
+            dataset: {}
+            for dataset in ("sensors", "hourly", "minute", "landmarks")
+        }
+        for (
+            dataset,
+            status,
+            watermark,
+            last_completed_at,
+            inserted_count,
+            updated_count,
+            rejected_count,
+            duplicates_resolved,
+        ) in checkpoint_rows:
+            checkpoints[dataset] = {
+                "status": status,
+                "watermark": watermark,
+                "last_completed_at": last_completed_at,
+                "inserted_count": inserted_count,
+                "updated_count": updated_count,
+                "rejected_count": rejected_count,
+                "duplicates_resolved": duplicates_resolved,
+            }
+
+        return {
+            "tables": {
+                "sensors": {
+                    "rows": sensor_rows,
+                    "active_with_coordinates": active_with_coordinates,
+                },
+                "minute": {
+                    "rows": minute_rows,
+                    "observed_rows": minute_observed,
+                    "imputed_rows": minute_imputed,
+                    "latest_timestamp": latest_minute,
+                },
+                "hourly": {
+                    "rows": hourly_rows,
+                    "observed_rows": hourly_observed,
+                    "imputed_rows": hourly_imputed,
+                    "latest_timestamp": latest_hourly,
+                },
+                "landmarks": {
+                    "rows": landmark_rows,
+                    "refuge_rows": refuge_rows,
+                    "refuges_by_category": refuges_by_category,
+                },
+            },
+            "checkpoints": checkpoints,
+        }
+
     def read_existing_sensor_ids(self, location_ids: Iterable[int]) -> set[int]:
         location_ids = sorted(set(location_ids))
         if not location_ids:

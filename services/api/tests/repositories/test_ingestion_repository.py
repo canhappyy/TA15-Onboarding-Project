@@ -235,3 +235,76 @@ def test_ingestion_advisory_lock_uses_dedicated_postgres_session_lock():
     assert acquire_parameters == release_parameters
     assert acquired is True
     assert released is True
+
+
+def test_ingestion_status_returns_sanitized_counts_freshness_and_checkpoints():
+    cursor = FakeCursor()
+    latest_minute = datetime(2026, 8, 9, 1, 10, tzinfo=timezone.utc)
+    latest_hourly = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    cursor.fetchone_values = [
+        (8, 6),
+        (20, 20, 0, latest_minute),
+        (300, 300, 0, latest_hourly),
+        (12, 9),
+    ]
+    cursor.fetchall_values = [
+        [("LIBRARY", 2), ("PARK", 7)],
+        [
+            (
+                "minute",
+                "succeeded",
+                latest_minute,
+                latest_minute,
+                20,
+                0,
+                1,
+                2,
+            )
+        ],
+    ]
+    repository = IngestionRepository(FakeConnection(cursor))
+
+    result = repository.read_ingestion_status()
+
+    assert result == {
+        "tables": {
+            "sensors": {"rows": 8, "active_with_coordinates": 6},
+            "minute": {
+                "rows": 20,
+                "observed_rows": 20,
+                "imputed_rows": 0,
+                "latest_timestamp": latest_minute,
+            },
+            "hourly": {
+                "rows": 300,
+                "observed_rows": 300,
+                "imputed_rows": 0,
+                "latest_timestamp": latest_hourly,
+            },
+            "landmarks": {
+                "rows": 12,
+                "refuge_rows": 9,
+                "refuges_by_category": {"LIBRARY": 2, "PARK": 7},
+            },
+        },
+        "checkpoints": {
+            "sensors": {},
+            "hourly": {},
+            "minute": {
+                "status": "succeeded",
+                "watermark": latest_minute,
+                "last_completed_at": latest_minute,
+                "inserted_count": 20,
+                "updated_count": 0,
+                "rejected_count": 1,
+                "duplicates_resolved": 2,
+            },
+            "landmarks": {},
+        },
+    }
+    statements = "\n".join(statement for statement, _ in cursor.statements)
+    assert "FROM sensor_location" in statements
+    assert "FROM pedestrian_minute_count" in statements
+    assert "FROM pedestrian_hourly_count" in statements
+    assert "FROM ingestion_checkpoint" in statements
+    assert "error_message" not in statements
