@@ -77,3 +77,33 @@ output "ors_api_key_secret_arn" {
   description = "ARN of the empty Secrets Manager secret for the OpenRouteService API key"
   value       = aws_secretsmanager_secret.ors_api_key.arn
 }
+
+output "ingestion_lambda_name" {
+  description = "Name of the internal Open Data ingestion Lambda"
+  value       = aws_lambda_function.ingestion.function_name
+}
+
+output "ingestion_repository_url" {
+  description = "ECR repository used by the ingestion Lambda"
+  value       = aws_ecr_repository.ingestion.repository_url
+}
+
+output "database_migration_repository_url" {
+  description = "ECR repository used by the database migration Lambda"
+  value       = aws_ecr_repository.database_migration.repository_url
+}
+
+output "rds_connectivity_repository_url" {
+  description = "ECR repository used by the RDS connectivity Lambda"
+  value       = aws_ecr_repository.rds_connectivity.repository_url
+}
+
+output "ingestion_schedules_enabled" {
+  description = "Whether recurring ingestion schedules are enabled"
+  value       = var.ingestion_schedules_enabled
+}
+
+output "ingestion_alert_topic_arn" {
+  description = "SNS topic receiving ingestion alarm notifications"
+  value       = aws_sns_topic.ingestion_alerts.arn
+}

@@ -5,9 +5,33 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_ecr_image" {
+    defaults = {
+      image_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+
+  mock_resource "aws_sns_topic" {
+    defaults = {
+      arn = "arn:aws:sns:ap-southeast-4:123456789012:ingestion-alerts"
+    }
+  }
+
   mock_resource "aws_iam_role" {
     defaults = {
       arn = "arn:aws:iam::123456789012:role/mock-lambda-role"
+    }
+  }
+
+  mock_resource "aws_lambda_function" {
+    defaults = {
+      arn = "arn:aws:lambda:ap-southeast-4:123456789012:function:mock"
+    }
+  }
+
+  mock_resource "aws_sqs_queue" {
+    defaults = {
+      arn = "arn:aws:sqs:ap-southeast-4:123456789012:mock-dlq"
     }
   }
 
@@ -27,11 +51,10 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_lambda_layer_version" {
-    defaults = {
-      arn = "arn:aws:lambda:ap-southeast-4:123456789012:layer:mock-psycopg:1"
-    }
-  }
+}
+
+variables {
+  build_lambda_images = false
 }
 
 run "rds_connectivity_plan" {
@@ -39,11 +62,11 @@ run "rds_connectivity_plan" {
 
   assert {
     condition = (
-      aws_lambda_function.rds_connectivity.handler == "handler.lambda_handler" &&
-      aws_lambda_function.rds_connectivity.runtime == "python3.13" &&
+      aws_lambda_function.rds_connectivity.package_type == "Image" &&
+      aws_lambda_function.rds_connectivity.image_config[0].command == tolist(["src.functions.rds_connectivity.handler.lambda_handler"]) &&
       aws_lambda_function.rds_connectivity.architectures == tolist(["arm64"])
     )
-    error_message = "Connectivity Lambda must use the Python 3.13 ARM64 handler."
+    error_message = "Connectivity Lambda must use its independent ARM64 image."
   }
 
   assert {
@@ -56,7 +79,6 @@ run "rds_connectivity_plan" {
 
   assert {
     condition = (
-      length(aws_lambda_function.rds_connectivity.layers) == 1 &&
       toset(keys(aws_lambda_function.rds_connectivity.environment[0].variables)) == toset([
         "DATABASE_HOST",
         "DATABASE_NAME",
@@ -64,7 +86,7 @@ run "rds_connectivity_plan" {
         "DATABASE_SECRET_ARN",
       ])
     )
-    error_message = "Connectivity Lambda must use the psycopg layer and complete database configuration."
+    error_message = "Connectivity Lambda must receive complete database configuration."
   }
 
   assert {
@@ -74,14 +96,6 @@ run "rds_connectivity_plan" {
       aws_lambda_function.rds_connectivity.environment[0].variables.DATABASE_PORT == "5432"
     )
     error_message = "Connectivity Lambda must receive host, database name, and port from Terraform."
-  }
-
-  assert {
-    condition = (
-      aws_lambda_layer_version.psycopg.compatible_architectures == toset(["arm64"]) &&
-      aws_lambda_layer_version.psycopg.compatible_runtimes == toset(["python3.13"])
-    )
-    error_message = "psycopg layer must target Python 3.13 on ARM64."
   }
 
   assert {

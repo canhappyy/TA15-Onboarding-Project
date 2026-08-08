@@ -5,9 +5,33 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_ecr_image" {
+    defaults = {
+      image_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+
+  mock_resource "aws_sns_topic" {
+    defaults = {
+      arn = "arn:aws:sns:ap-southeast-4:123456789012:ingestion-alerts"
+    }
+  }
+
   mock_resource "aws_iam_role" {
     defaults = {
       arn = "arn:aws:iam::123456789012:role/mock-lambda-role"
+    }
+  }
+
+  mock_resource "aws_lambda_function" {
+    defaults = {
+      arn = "arn:aws:lambda:ap-southeast-4:123456789012:function:mock"
+    }
+  }
+
+  mock_resource "aws_sqs_queue" {
+    defaults = {
+      arn = "arn:aws:sqs:ap-southeast-4:123456789012:mock-dlq"
     }
   }
 
@@ -27,11 +51,10 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_lambda_layer_version" {
-    defaults = {
-      arn = "arn:aws:lambda:ap-southeast-4:123456789012:layer:mock-psycopg:1"
-    }
-  }
+}
+
+variables {
+  build_lambda_images = false
 }
 
 run "database_migration_plan" {
@@ -39,11 +62,11 @@ run "database_migration_plan" {
 
   assert {
     condition = (
-      aws_lambda_function.database_migration.handler == "handler.lambda_handler" &&
-      aws_lambda_function.database_migration.runtime == "python3.13" &&
+      aws_lambda_function.database_migration.package_type == "Image" &&
+      aws_lambda_function.database_migration.image_config[0].command == tolist(["src.functions.database_migration.handler.lambda_handler"]) &&
       aws_lambda_function.database_migration.architectures == tolist(["arm64"])
     )
-    error_message = "Migration Lambda must use Python 3.13 on ARM64."
+    error_message = "Migration Lambda must use its independent ARM64 image."
   }
 
   assert {
@@ -56,7 +79,6 @@ run "database_migration_plan" {
 
   assert {
     condition = (
-      toset(aws_lambda_function.database_migration.layers) == toset([aws_lambda_layer_version.psycopg.arn]) &&
       toset(keys(aws_lambda_function.database_migration.environment[0].variables)) == toset([
         "DATABASE_HOST",
         "DATABASE_NAME",
@@ -65,7 +87,7 @@ run "database_migration_plan" {
         "MIGRATIONS_PATH",
       ])
     )
-    error_message = "Migration Lambda must use the database layer and configuration."
+    error_message = "Migration Lambda must use complete database configuration."
   }
 
   assert {

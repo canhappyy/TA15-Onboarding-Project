@@ -109,6 +109,95 @@ resource "aws_iam_role_policy" "database_migration_secret" {
   })
 }
 
+resource "aws_iam_role" "ingestion_execution" {
+  name = "${local.name_prefix}-ingestion-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ingestion_basic" {
+  role       = aws_iam_role.ingestion_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "ingestion_vpc" {
+  role       = aws_iam_role.ingestion_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy" "ingestion_secret" {
+  name = "${local.name_prefix}-ingestion-secret"
+  role = aws_iam_role.ingestion_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "secretsmanager:GetSecretValue"
+      Resource = aws_db_instance.postgres.master_user_secret[0].secret_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ingestion_failure_destination" {
+  name = "${local.name_prefix}-ingestion-failure-destination"
+  role = aws_iam_role.ingestion_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.ingestion_dlq.arn
+    }]
+  })
+}
+
+resource "aws_iam_role" "ingestion_scheduler" {
+  name = "${local.name_prefix}-ingestion-scheduler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "scheduler.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ingestion_scheduler" {
+  name = "${local.name_prefix}-ingestion-scheduler"
+  role = aws_iam_role.ingestion_scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "lambda:InvokeFunction"
+        Resource = aws_lambda_function.ingestion.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.ingestion_dlq.arn
+      }
+    ]
+  })
+}
+
 resource "aws_security_group" "lambda" {
   name        = "${local.name_prefix}-lambda-sg"
   description = "Outbound access for VPC Lambda functions"

@@ -29,3 +29,15 @@ variable "frontend_origins" {
     "http://localhost:3000"
   ]
 }
+
+variable "build_lambda_images" {
+  description = "Build and push Lambda container images during terraform apply"
+  type        = bool
+  default     = true
+}
+
+variable "ingestion_schedules_enabled" {
+  description = "Enable recurring ingestion only after migration and bootstrap verification"
+  type        = bool
+  default     = false
+}
