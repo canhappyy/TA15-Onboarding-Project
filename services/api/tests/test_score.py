@@ -179,7 +179,7 @@ def test_classification_end_to_end():
     result = classify_current_conditions(thresholds, current_readings, hourly)
  
     assert len(result) == 2
-    assert set(result.columns) == {"location_id", "reading_used", "threshold", "level", "used_fallback"}
+    assert set(result.columns) == {"location_id", "reading_used", "threshold", "level", "used_fallback", "observed_at"}
     print("PASS: threshold -> current reading -> classify runs correctly end-to-end")
     print(result)
 
