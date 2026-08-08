@@ -9,20 +9,14 @@ from src.repositories.ingestion import (
 )
 
 
-class ResultCursor:
-    def __init__(self, inserted):
-        self.inserted = inserted
-
-    def fetchone(self):
-        return (self.inserted,)
-
-
 class FakeCursor:
     def __init__(self):
         self.statements = []
         self.batches = []
         self.outcomes = []
         self.fetchone_values = []
+        self.outcome_index = 0
+        self.batch_results_active = False
 
     def __enter__(self):
         return self
@@ -35,11 +29,18 @@ class FakeCursor:
 
     def executemany(self, statement, parameters, returning=False):
         self.batches.append((str(statement), list(parameters), returning))
+        self.outcome_index = 0
+        self.batch_results_active = returning
 
-    def results(self):
-        return iter(ResultCursor(outcome) for outcome in self.outcomes)
+    def nextset(self):
+        if self.outcome_index >= len(self.outcomes) - 1:
+            return None
+        self.outcome_index += 1
+        return True
 
     def fetchone(self):
+        if self.batch_results_active:
+            return (self.outcomes[self.outcome_index],)
         return self.fetchone_values.pop(0) if self.fetchone_values else None
 
 

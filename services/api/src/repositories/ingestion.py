@@ -282,7 +282,13 @@ class IngestionRepository:
 
     @staticmethod
     def _result_stats(cursor: Any) -> WriteStats:
-        outcomes = [bool(result.fetchone()[0]) for result in cursor.results()]
+        outcomes = []
+        while True:
+            row = cursor.fetchone()
+            if row is not None:
+                outcomes.append(bool(row[0]))
+            if not cursor.nextset():
+                break
         inserted = sum(outcomes)
         return WriteStats(inserted=inserted, updated=len(outcomes) - inserted)
 
