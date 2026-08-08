@@ -36,3 +36,25 @@ cat /tmp/rds-connectivity-response.json
 ```
 
 A successful check returns `{"status":"ok"}` without `FunctionError`.
+
+## Configure location search
+
+Terraform creates the OpenRouteService secret without a value. After deployment,
+store the key manually so it never enters Terraform state:
+
+```bash
+aws secretsmanager put-secret-value \
+  --region ap-southeast-4 \
+  --secret-id "$(terraform output -raw ors_api_key_secret_arn)" \
+  --secret-string '{"api_key":"YOUR_ORS_API_KEY"}'
+```
+
+Then test the endpoint:
+
+```bash
+curl --get "$(terraform output -raw location_search_endpoint)" \
+  --data-urlencode 'text=State Library Victoria'
+```
+
+The location-search Lambda uses public AWS networking and reads only this secret.
+It has no RDS access and no VPC attachment.

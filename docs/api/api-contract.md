@@ -72,6 +72,8 @@ Deployment and monitoring probe. This is the only endpoint outside the common en
 ## `GET /locations/search?text=<query>`
 
 Returns at most five OpenRouteService suggestions inside the City of Melbourne boundary.
+The service returns `OUTSIDE_SERVICE_AREA` when matches exist but all are outside
+the municipal boundary. No upstream matches return an empty suggestions array.
 
 ```json
 {
@@ -90,6 +92,10 @@ Returns at most five OpenRouteService suggestions inside the City of Melbourne b
   }
 }
 ```
+
+Boundary source: City of Melbourne Open Data, `municipal-boundary`, Creative
+Commons Attribution. The packaged 2022 export avoids a runtime dependency on
+the boundary dataset.
 
 ## `POST /routes/search`
 
