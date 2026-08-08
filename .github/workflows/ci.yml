@@ -52,6 +52,27 @@ jobs:
       - name: Run backend tests
         run: pytest
 
+  ingestion-container:
+    name: Ingestion container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ARM64 ingestion image
+        run: bash infra/aws/scripts/build_ingestion_image.sh clearway-ingestion:test
+
+      - name: Verify ingestion image
+        run: bash infra/aws/scripts/verify_ingestion_image.sh clearway-ingestion:test
+
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
