@@ -44,6 +44,21 @@ class IngestionService:
         if mode not in SUPPORTED_MODES:
             raise ValueError(f"Unsupported ingestion mode: {mode}")
 
+        with self._connection_factory() as lock_connection:
+            lock_repository = self._repository_factory(lock_connection)
+            if not lock_repository.try_acquire_ingestion_lock():
+                return {
+                    "mode": mode,
+                    "status": "skipped",
+                    "reason": "INGESTION_ALREADY_RUNNING",
+                    "datasets": {},
+                }
+            try:
+                return self._run_locked(mode)
+            finally:
+                lock_repository.release_ingestion_lock()
+
+    def _run_locked(self, mode: str) -> dict[str, Any]:
         datasets: dict[str, dict[str, int]] = {}
         if mode == "static":
             datasets["sensors"] = self._sync_sensors()

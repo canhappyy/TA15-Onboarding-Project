@@ -71,6 +71,8 @@ class Store:
         self.calls = []
         self.connections = []
         self.fail_on = None
+        self.lock_available = True
+        self.lock_held = False
 
 
 class FakeConnection:
@@ -97,6 +99,19 @@ class FakeRepository:
     def read_checkpoint(self, dataset):
         self.store.calls.append(("read_checkpoint", dataset))
         return self.store.checkpoints.get(dataset)
+
+    def try_acquire_ingestion_lock(self):
+        self.store.calls.append(("try_acquire_ingestion_lock",))
+        if not self.store.lock_available:
+            return False
+        self.store.lock_held = True
+        return True
+
+    def release_ingestion_lock(self):
+        self.store.calls.append(("release_ingestion_lock",))
+        was_held = self.store.lock_held
+        self.store.lock_held = False
+        return was_held
 
     def read_existing_sensor_ids(self, location_ids):
         self.store.calls.append(("read_sensor_ids", set(location_ids)))
@@ -176,6 +191,34 @@ def test_static_sync_writes_sensors_before_landmarks_with_checkpoints():
     assert all(connection.committed for connection in store.connections)
 
 
+def test_run_holds_one_advisory_lock_around_all_ingestion_work():
+    service, store, _client = build_service()
+
+    service.run("static")
+
+    assert store.calls[0] == ("try_acquire_ingestion_lock",)
+    assert store.calls[-1] == ("release_ingestion_lock",)
+    assert store.lock_held is False
+
+
+def test_concurrent_run_skips_without_downloads_or_writes():
+    store = Store()
+    store.lock_available = False
+    service, store, client = build_service(store=store)
+
+    result = service.run("minute")
+
+    assert result == {
+        "mode": "minute",
+        "status": "skipped",
+        "reason": "INGESTION_ALREADY_RUNNING",
+        "datasets": {},
+    }
+    assert client.calls == []
+    assert store.calls == [("try_acquire_ingestion_lock",)]
+    assert len(store.connections) == 1
+
+
 def test_static_sync_passes_required_refuge_classification_to_repository():
     service, store, _client = build_service()
 
@@ -217,6 +260,8 @@ def test_failed_batch_rolls_back_and_preserves_previous_checkpoint():
 
     assert store.checkpoints["minute"] is previous
     assert store.connections[-1].rolled_back is True
+    assert store.calls[-1] == ("release_ingestion_lock",)
+    assert store.lock_held is False
 
 
 def test_hourly_sync_backfills_unknown_sensor_inside_count_transaction():
