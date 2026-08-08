@@ -57,3 +57,18 @@ output "rds_connectivity_lambda_name" {
   description = "Name of the internal Lambda used for manual RDS connectivity checks"
   value       = aws_lambda_function.rds_connectivity.function_name
 }
+
+output "location_search_endpoint" {
+  description = "Location-search endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/locations/search"
+}
+
+output "location_search_lambda_name" {
+  description = "Name of the location-search Lambda"
+  value       = aws_lambda_function.location_search.function_name
+}
+
+output "ors_api_key_secret_arn" {
+  description = "ARN of the empty Secrets Manager secret for the OpenRouteService API key"
+  value       = aws_secretsmanager_secret.ors_api_key.arn
+}
