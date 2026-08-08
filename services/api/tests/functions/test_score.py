@@ -12,12 +12,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "functions"
 
 
 import pandas as pd
-from scoring_logic import (
+from src.functions.calculate_scores.scoring_logic import (
     _location_filter,
     calculate_thresholds,
     get_last_hour_total,
     classify_current_conditions,
-    add_sensory_level,
 )
  
 
