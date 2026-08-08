@@ -1,0 +1,5 @@
+Location_ID,Sensing_Date,HourDay,Direction_1,Direction_2,Total_of_Directions
+1,2026-06-15,8,40,60,100
+1,2026-06-15,8,45,65,110
+2,2026-06-15,9,30,40,70
+99,2026-12-15,14,20,30,50
