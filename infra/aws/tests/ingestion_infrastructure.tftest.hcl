@@ -132,9 +132,9 @@ run "ingestion_infrastructure_plan" {
       aws_lambda_function.ingestion.image_config[0].command == tolist(["src.functions.ingestion.handler.lambda_handler"]) &&
       aws_lambda_function.ingestion.timeout == 900 &&
       aws_lambda_function.ingestion.memory_size == 1024 &&
-      aws_lambda_function.ingestion.reserved_concurrent_executions == 1
+      aws_lambda_function.ingestion.reserved_concurrent_executions == null
     )
-    error_message = "Ingestion Lambda must use the ARM64 image with bounded single concurrency."
+    error_message = "Ingestion Lambda must use the ARM64 image without reserved concurrency."
   }
 
   assert {
