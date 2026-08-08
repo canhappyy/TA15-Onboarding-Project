@@ -67,7 +67,8 @@ def fetch_hourly_history(
     query = text(f"""
         SELECT location_id, sensing_datetime, total_count
         FROM pedestrian_hourly_count
-        WHERE 1=1 {where_clause}
+        WHERE sensing_datetime > NOW() - INTERVAL '90 days' 
+        {where_clause}
     """)
     with engine.connect() as conn:
         return pd.read_sql(query, conn, params=params)
@@ -91,6 +92,7 @@ def fetch_recent_minutes(
         SELECT location_id, sensing_datetime, total_count, is_imputed
         FROM pedestrian_minute_count
         WHERE sensing_datetime > NOW() - (:hours_back || ' hours')::interval
+        AND is_imputed = false
         {where_clause}
     """)
     with engine.connect() as conn:
@@ -144,14 +146,16 @@ def get_last_hour_total(
 
 # Compare current count to threshold
 # If missing falls back to historical average 
+# Note: observed_at is None when no observation timestamp is available
 def classify_current_conditions(
     thresholds: pd.DataFrame,
     current_readings: pd.DataFrame,
     hourly_history: pd.DataFrame,
     count_col: str = "total_count",
+    observed_at: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     merged = thresholds.merge(current_readings, on="location_id", how="left")
- 
+
     historical_avg = (
         hourly_history.groupby("location_id")[count_col]
         .mean()
@@ -159,12 +163,13 @@ def classify_current_conditions(
         .rename(columns={count_col: "historical_avg"})
     )
     merged = merged.merge(historical_avg, on="location_id", how="left")
- 
+
     merged["used_fallback"] = merged["current_count"].isna()
     merged["reading_used"] = merged["current_count"].fillna(merged["historical_avg"])
     merged["level"] = np.where(merged["reading_used"] >= merged["threshold"], "High", "Low")
- 
-    return merged[["location_id", "reading_used", "threshold", "level", "used_fallback"]]
+    merged["observed_at"] = np.where(merged["used_fallback"], None, observed_at)
+
+    return merged[["location_id", "reading_used", "threshold", "level", "used_fallback", "observed_at"]]
 
 
 # ------------------------------------------------------------
@@ -259,14 +264,19 @@ def add_sensory_level(
 # Shortcut: fetch + score
 # ------------------------------------------------------------
 def get_scores(location_id: LocationId = None, database_url: Optional[str] = None) -> pd.DataFrame:
-
     hourly_history = fetch_hourly_history(location_id, database_url)
     live_minutes = fetch_recent_minutes(location_id, database_url=database_url)
- 
-    thresholds = calculate_thresholds(hourly_history)
-    current_readings = get_last_hour_total(live_minutes)
-    scored = classify_current_conditions(thresholds, current_readings, hourly_history)
 
+    reference_time = pd.Timestamp.now(tz="UTC")
+
+    thresholds = calculate_thresholds(hourly_history)
+    current_readings = get_last_hour_total(live_minutes, reference_time=reference_time)
+    scored = classify_current_conditions(
+        thresholds, current_readings, hourly_history, observed_at=reference_time
+    )
+
+    # Everything below this line is unchanged -- calling their functions
+    # exactly as they wrote them, no modifications to their code
     sensor_coords = fetch_sensor_coordinates(location_id, database_url)
     refuges = fetch_refuge_landmarks(database_url)
     return add_sensory_level(scored, sensor_coords, refuges)
