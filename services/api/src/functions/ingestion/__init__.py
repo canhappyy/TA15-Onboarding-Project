@@ -1,0 +1,2 @@
+"""Internal scheduled ingestion Lambda."""
+
