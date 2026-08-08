@@ -1,53 +1,64 @@
 # AWS infrastructure
 
-Terraform deploys the ClearWay AWS resources. Build the Python 3.13 ARM64
-`psycopg` layer before planning or applying the RDS connectivity Lambda.
+Terraform deploys ClearWay AWS resources. RDS connectivity, database migration,
+and ingestion use Python 3.13 ARM64 container images. Health and location search
+remain ZIP Lambdas.
+
+## Prerequisites
+
+- Docker Desktop with Buildx running
+- AWS CLI authenticated for `ap-southeast-4`
+- Terraform 1.15.5 or compatible
+
+## Validate and deploy
 
 From `infra/aws`:
 
 ```bash
-bash scripts/build_psycopg_layer.sh \
-  .terraform-build/psycopg-layer.zip \
-  layers/psycopg/requirements.txt
-
 terraform fmt -check -recursive
+terraform init
 terraform validate
 terraform test
 terraform plan
 terraform apply
 ```
 
-The generated ZIP is ignored by Git. Rebuild it after a clean checkout or
-when the requirements, Python runtime, architecture, or build script changes.
-`terraform destroy` removes the AWS layer but does not remove the local ZIP.
+The first `terraform apply` creates three private ECR repositories, then builds
+and pushes content-addressed ARM64 images before creating the Lambdas. Existing
+immutable image tags are reused, so an interrupted apply can be retried. Source
+or dependency changes produce new tags automatically.
 
-## Build the ingestion container
+Docker must run during an apply that needs a new image. No separate psycopg
+layer build is required. Set `build_lambda_images = false` only for mocked tests;
+a real deployment needs the images.
 
-The ingestion Lambda uses a separate Python 3.13 ARM64 container containing
-pandas, NumPy, psycopg, and boto3. With Docker running, build and verify it from
-`infra/aws`:
+`terraform destroy` removes ECR and Lambda resources. A later fresh apply builds
+and pushes the images again because the ECR repositories are new.
 
-```bash
-bash scripts/build_ingestion_image.sh clearway-ingestion:dev
-bash scripts/verify_ingestion_image.sh clearway-ingestion:dev
-```
-
-The verification checks the image architecture, imports its runtime
-dependencies, and exercises all four ingestion handler modes. Terraform does
-not build the image. ECR publishing and Lambda deployment are added by the
-ingestion-infrastructure milestone.
-
-Runtime dependencies are declared in `services/api/requirements-ingestion.in`
-and hash-locked in `requirements-ingestion.txt`. Regenerate the lock with
-Python 3.13 and `pip-tools` whenever a direct dependency changes:
+## Optional local image verification
 
 ```bash
-pip-compile --generate-hashes \
-  --output-file=../../services/api/requirements-ingestion.txt \
-  ../../services/api/requirements-ingestion.in
+bash scripts/manage_lambda_images.sh build ingestion clearway-ingestion:dev
+bash scripts/manage_lambda_images.sh verify ingestion clearway-ingestion:dev
+
+bash scripts/manage_lambda_images.sh build database_migration clearway-database-migration:dev
+bash scripts/manage_lambda_images.sh verify database_migration clearway-database-migration:dev
+
+bash scripts/manage_lambda_images.sh build rds_connectivity clearway-rds-connectivity:dev
+bash scripts/manage_lambda_images.sh verify rds_connectivity clearway-rds-connectivity:dev
 ```
 
-After deployment, invoke the private connectivity check manually:
+Each containerized function owns the Dockerfile beside its handler. The one
+management script provides local build/verification and Terraform ECR publish
+behavior.
+
+Runtime dependencies are hash-locked in
+`services/api/requirements-ingestion.txt` and
+`services/api/requirements-database-tools.txt`.
+
+## Post-deployment checks
+
+Check private RDS connectivity:
 
 ```bash
 aws lambda invoke \
@@ -55,18 +66,12 @@ aws lambda invoke \
   --function-name "$(terraform output -raw rds_connectivity_lambda_name)" \
   --cli-binary-format raw-in-base64-out \
   --payload '{}' \
-  --log-type Tail \
   /tmp/rds-connectivity-response.json
 
 cat /tmp/rds-connectivity-response.json
 ```
 
-A successful check returns `{"status":"ok"}` without `FunctionError`.
-
-## Apply database migrations
-
-Terraform deploys an internal migration Lambda but does not invoke it. After
-`terraform apply`, run:
+Apply idempotent database migrations:
 
 ```bash
 aws lambda invoke \
@@ -79,14 +84,34 @@ aws lambda invoke \
 cat /tmp/database-migration-response.json
 ```
 
-Success reports the current migration version. Repeated invocation is safe and
-returns `"applied": 0` when the database is current. The migration Lambda has
-no API Gateway route and does not load application data.
+Run bootstrap ingestion after migration:
+
+```bash
+aws lambda invoke \
+  --region ap-southeast-4 \
+  --function-name "$(terraform output -raw ingestion_lambda_name)" \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"mode":"bootstrap"}' \
+  /tmp/ingestion-bootstrap-response.json
+
+cat /tmp/ingestion-bootstrap-response.json
+```
+
+Minute, hourly, and static schedules start disabled. Enable them only after the
+migration, bootstrap, checkpoint, and row-count smoke tests pass:
+
+```bash
+terraform apply -var='ingestion_schedules_enabled=true'
+```
+
+Both ingestion alarms publish to `ingestion_alert_topic_arn`. Add an email or
+operations subscription to that SNS topic after deployment; Terraform creates
+no recipient automatically.
 
 ## Configure location search
 
-Terraform creates the OpenRouteService secret without a value. After deployment,
-store the key manually so it never enters Terraform state:
+Terraform creates the OpenRouteService secret without a value. Store the key
+after deployment so it never enters Terraform state:
 
 ```bash
 aws secretsmanager put-secret-value \
@@ -94,13 +119,3 @@ aws secretsmanager put-secret-value \
   --secret-id "$(terraform output -raw ors_api_key_secret_arn)" \
   --secret-string '{"api_key":"YOUR_ORS_API_KEY"}'
 ```
-
-Then test the endpoint:
-
-```bash
-curl --get "$(terraform output -raw location_search_endpoint)" \
-  --data-urlencode 'text=State Library Victoria'
-```
-
-The location-search Lambda uses public AWS networking and reads only this secret.
-It has no RDS access and no VPC attachment.

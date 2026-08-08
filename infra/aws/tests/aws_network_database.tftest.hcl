@@ -5,9 +5,33 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_ecr_image" {
+    defaults = {
+      image_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+
+  mock_resource "aws_sns_topic" {
+    defaults = {
+      arn = "arn:aws:sns:ap-southeast-4:123456789012:ingestion-alerts"
+    }
+  }
+
   mock_resource "aws_iam_role" {
     defaults = {
       arn = "arn:aws:iam::123456789012:role/mock-lambda-role"
+    }
+  }
+
+  mock_resource "aws_lambda_function" {
+    defaults = {
+      arn = "arn:aws:lambda:ap-southeast-4:123456789012:function:mock"
+    }
+  }
+
+  mock_resource "aws_sqs_queue" {
+    defaults = {
+      arn = "arn:aws:sqs:ap-southeast-4:123456789012:mock-dlq"
     }
   }
 
@@ -27,11 +51,10 @@ mock_provider "aws" {
     }
   }
 
-  mock_resource "aws_lambda_layer_version" {
-    defaults = {
-      arn = "arn:aws:lambda:ap-southeast-4:123456789012:layer:mock-psycopg:1"
-    }
-  }
+}
+
+variables {
+  build_lambda_images = false
 }
 
 run "network_database_plan" {
