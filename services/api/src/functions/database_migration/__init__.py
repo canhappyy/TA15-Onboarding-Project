@@ -1,0 +1,1 @@
+"""Internal database migration Lambda."""
