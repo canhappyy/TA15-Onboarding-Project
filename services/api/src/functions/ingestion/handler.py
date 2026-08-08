@@ -125,7 +125,7 @@ def lambda_handler(
                 "event": "open_data_ingestion",
                 "status": "ok",
                 "mode": mode,
-                "datasets": result["datasets"],
+                "datasets": result.get("datasets", {}),
             }
         )
     )

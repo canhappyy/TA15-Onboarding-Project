@@ -145,3 +145,68 @@ def test_ingestion_advisory_lock_excludes_other_database_sessions():
         assert first.release_ingestion_lock() is True
         assert second.try_acquire_ingestion_lock() is True
         assert second.release_ingestion_lock() is True
+
+
+@pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not configured")
+def test_ingestion_status_reports_empty_database_without_sensitive_fields():
+    _prepare_database()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        status = IngestionRepository(connection).read_ingestion_status()
+
+    assert status["tables"]["sensors"] == {
+        "rows": 0,
+        "active_with_coordinates": 0,
+    }
+    assert status["tables"]["minute"]["latest_timestamp"] is None
+    assert status["tables"]["hourly"]["latest_timestamp"] is None
+    assert status["tables"]["landmarks"] == {
+        "rows": 0,
+        "refuge_rows": 0,
+        "refuges_by_category": {},
+    }
+    assert status["checkpoints"] == {
+        "sensors": {},
+        "hourly": {},
+        "minute": {},
+        "landmarks": {},
+    }
+    assert "error_message" not in json.dumps(status, default=str)
+
+
+@pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL is not configured")
+def test_ingestion_status_reports_loaded_observed_data_and_checkpoint():
+    _prepare_database()
+    sensors = normalize_sensors(_fixture("sensor_locations.csv"))["records"]
+    minute = normalize_minute_counts(_fixture("minute_counts.csv"))["records"]
+    hourly = normalize_hourly_counts(_fixture("hourly_counts.csv"))["records"]
+    landmarks = normalize_landmarks(_fixture("landmarks.csv"))["records"]
+    sensors.append({"location_id": 99, "sensor_name": "Historical 99", "status": "D"})
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        repository = IngestionRepository(connection)
+        repository.upsert_sensors(sensors)
+        repository.upsert_minute_counts(minute)
+        repository.upsert_hourly_counts(hourly)
+        repository.upsert_landmarks(landmarks)
+        repository.save_checkpoint(
+            IngestionCheckpoint.succeeded(
+                dataset="minute",
+                watermark="2026-08-04T00:17:00+10:00",
+                inserted_count=len(minute),
+                updated_count=0,
+                rejected_count=1,
+                duplicates_resolved=1,
+            )
+        )
+        status = repository.read_ingestion_status()
+
+    assert status["tables"]["sensors"]["rows"] == len(sensors)
+    assert status["tables"]["minute"]["rows"] == len(minute)
+    assert status["tables"]["minute"]["observed_rows"] == len(minute)
+    assert status["tables"]["minute"]["imputed_rows"] == 0
+    assert status["tables"]["minute"]["latest_timestamp"] is not None
+    assert status["tables"]["hourly"]["rows"] == len(hourly)
+    assert status["tables"]["landmarks"]["rows"] == len(landmarks)
+    assert status["checkpoints"]["minute"]["status"] == "succeeded"
+    assert status["checkpoints"]["minute"]["rejected_count"] == 1

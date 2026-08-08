@@ -15,7 +15,7 @@ configure_function() {
     ingestion)
       dockerfile="${repository_root}/services/api/src/functions/ingestion/Dockerfile"
       build_context="${repository_root}/services/api"
-      smoke_code='import importlib.util; import pandas; import numpy; import psycopg; import boto3; assert importlib.util.find_spec("sqlalchemy") is None; from src.functions.ingestion.handler import lambda_handler; service=type("FakeService", (), {"run": lambda self, mode: {"mode": mode, "datasets": {}}})(); modes=("bootstrap", "minute", "hourly", "static"); assert all(lambda_handler({"mode": mode}, None, service=service)["mode"] == mode for mode in modes)'
+      smoke_code='import importlib.util; import pandas; import numpy; import psycopg; import boto3; assert importlib.util.find_spec("sqlalchemy") is None; from src.functions.ingestion.handler import lambda_handler; service=type("FakeService", (), {"run": lambda self, mode: {"mode": mode, "datasets": {}}})(); modes=("bootstrap", "minute", "hourly", "static", "status"); assert all(lambda_handler({"mode": mode}, None, service=service)["mode"] == mode for mode in modes)'
       ;;
     database_migration)
       dockerfile="${repository_root}/services/api/src/functions/database_migration/Dockerfile"

@@ -58,7 +58,9 @@ class FakeSecretReader:
         return self.credentials
 
 
-@pytest.mark.parametrize("mode", ["bootstrap", "minute", "hourly", "static"])
+@pytest.mark.parametrize(
+    "mode", ["bootstrap", "minute", "hourly", "static", "status"]
+)
 def test_handler_runs_supported_mode_and_returns_sanitized_statistics(mode):
     service = FakeService(
         result={"mode": mode, "datasets": {"minute": {"inserted": 2}}}
@@ -68,6 +70,22 @@ def test_handler_runs_supported_mode_and_returns_sanitized_statistics(mode):
 
     assert service.modes == [mode]
     assert result == {"mode": mode, "datasets": {"minute": {"inserted": 2}}}
+
+
+def test_handler_returns_status_shape_without_requiring_dataset_statistics():
+    status = {
+        "mode": "status",
+        "tables": {"sensors": {"rows": 1, "active_with_coordinates": 1}},
+        "checkpoints": {"sensors": {}},
+    }
+
+    result = lambda_handler(
+        {"mode": "status"},
+        None,
+        service=FakeService(result=status),
+    )
+
+    assert result == status
 
 
 @pytest.mark.parametrize("event", [None, {}, {"mode": None}, {"mode": "all"}])

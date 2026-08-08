@@ -77,7 +77,7 @@ def test_build_maps_each_function_to_local_dockerfile_and_arm64_context(tmp_path
 
 def test_verify_runs_function_specific_smoke_commands(tmp_path):
     expected_fragments = {
-        "ingestion": ("import pandas", "src.functions.ingestion.handler"),
+        "ingestion": ("import pandas", "src.functions.ingestion.handler", '"status"'),
         "database_migration": ("load_migrations", "/var/task/migrations"),
         "rds_connectivity": ("import psycopg", "src.functions.rds_connectivity.handler"),
     }

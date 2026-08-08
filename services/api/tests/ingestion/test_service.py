@@ -73,6 +73,42 @@ class Store:
         self.fail_on = None
         self.lock_available = True
         self.lock_held = False
+        self.ingestion_status = {
+            "tables": {
+                "sensors": {"rows": 2, "active_with_coordinates": 1},
+                "minute": {
+                    "rows": 3,
+                    "observed_rows": 3,
+                    "imputed_rows": 0,
+                    "latest_timestamp": NOW,
+                },
+                "hourly": {
+                    "rows": 4,
+                    "observed_rows": 4,
+                    "imputed_rows": 0,
+                    "latest_timestamp": NOW,
+                },
+                "landmarks": {
+                    "rows": 5,
+                    "refuge_rows": 4,
+                    "refuges_by_category": {"LIBRARY": 1, "PARK": 3},
+                },
+            },
+            "checkpoints": {
+                "sensors": {
+                    "status": "succeeded",
+                    "watermark": NOW,
+                    "last_completed_at": NOW,
+                    "inserted_count": 2,
+                    "updated_count": 0,
+                    "rejected_count": 0,
+                    "duplicates_resolved": 0,
+                },
+                "hourly": {},
+                "minute": {},
+                "landmarks": {},
+            },
+        }
 
 
 class FakeConnection:
@@ -99,6 +135,10 @@ class FakeRepository:
     def read_checkpoint(self, dataset):
         self.store.calls.append(("read_checkpoint", dataset))
         return self.store.checkpoints.get(dataset)
+
+    def read_ingestion_status(self):
+        self.store.calls.append(("read_ingestion_status",))
+        return self.store.ingestion_status
 
     def try_acquire_ingestion_lock(self):
         self.store.calls.append(("try_acquire_ingestion_lock",))
@@ -217,6 +257,21 @@ def test_concurrent_run_skips_without_downloads_or_writes():
     assert client.calls == []
     assert store.calls == [("try_acquire_ingestion_lock",)]
     assert len(store.connections) == 1
+
+
+def test_status_is_read_only_serializable_and_bypasses_ingestion_lock():
+    service, store, client = build_service()
+
+    result = service.run("status")
+
+    assert result["mode"] == "status"
+    assert result["tables"]["minute"]["latest_timestamp"] == NOW.isoformat()
+    assert (
+        result["checkpoints"]["sensors"]["last_completed_at"]
+        == NOW.isoformat()
+    )
+    assert client.calls == []
+    assert store.calls == [("read_ingestion_status",)]
 
 
 def test_static_sync_passes_required_refuge_classification_to_repository():
