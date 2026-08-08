@@ -36,6 +36,14 @@ The threshold is a "per hour" number. If we compared it to just one minute
 of data, the numbers would not match, and the score would always look too
 low. This was an early bug — see below.
 
+**Freshness (`observed_at`):**
+Per `database-contract.md`, freshness should reflect the sensor's own
+latest real reading, not the current wall-clock time. `get_scores()`
+tracks this by taking the latest `sensing_datetime` per sensor from the
+live minute data, before it gets summed into a single total. If a sensor
+used fallback (no live reading at all), `observed_at` is left blank —
+there is no real observation to report a time for.
+
 **Note on where the data comes from:**
 Our functions only read from Postgres tables (`pedestrian_hourly_count`,
 `pedestrian_minute_count`). They do not know or care how that data got
@@ -54,11 +62,15 @@ table structure, not on where the rows came from.
 | Function | What it does |
 |---|---|
 | `_location_filter` | Builds the right SQL filter for one sensor, a list, or all sensors |
-| `fetch_hourly_history` | Reads past hourly counts from Postgres |
-| `fetch_recent_minutes` | Reads recent minute-level counts from Postgres |
+| `fetch_hourly_history` | Reads past hourly counts from Postgres (latest 90 days only) |
+| `fetch_recent_minutes` | Reads recent minute-level counts from Postgres (excludes imputed rows) |
 | `calculate_thresholds` | Works out each sensor's top-25% threshold |
 | `get_last_hour_total` | Adds up the last 60 minutes per sensor |
 | `classify_current_conditions` | Compares reading to threshold, uses fallback if needed |
+| `fetch_sensor_details` | Reads sensor name and coordinates, for the API response |
+| `fetch_sensor_coordinates` | Reads sensor coordinates only, used by the refuge-distance check below |
+| `fetch_refuge_landmarks` | Reads landmarks flagged as refuges |
+| `add_sensory_level` | Combines crowd level with nearby refuge distance into `sensory_level` |
 | `get_scores` | Runs all the steps together, for one sensor, a list, or all sensors |
 
 `get_scores` can be called three ways:

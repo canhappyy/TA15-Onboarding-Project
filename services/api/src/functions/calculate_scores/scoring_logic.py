@@ -152,7 +152,6 @@ def classify_current_conditions(
     current_readings: pd.DataFrame,
     hourly_history: pd.DataFrame,
     count_col: str = "total_count",
-    observed_at: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     merged = thresholds.merge(current_readings, on="location_id", how="left")
 
@@ -167,9 +166,8 @@ def classify_current_conditions(
     merged["used_fallback"] = merged["current_count"].isna()
     merged["reading_used"] = merged["current_count"].fillna(merged["historical_avg"])
     merged["level"] = np.where(merged["reading_used"] >= merged["threshold"], "High", "Low")
-    merged["observed_at"] = pd.Series(observed_at, index=merged.index).where(~merged["used_fallback"])
 
-    return merged[["location_id", "reading_used", "threshold", "level", "used_fallback", "observed_at"]]
+    return merged[["location_id", "reading_used", "threshold", "level", "used_fallback"]]
 
 
 # ------------------------------------------------------------
@@ -274,7 +272,10 @@ def fetch_sensor_details(
     query = text(f"""
         SELECT location_id, sensor_description, latitude, longitude
         FROM sensor_location
-        WHERE 1=1 {where_clause}
+        WHERE status = 'A'
+          AND latitude IS NOT NULL
+          AND longitude IS NOT NULL
+        {where_clause}
     """)
     with engine.connect() as conn:
         return pd.read_sql(query, conn, params=params)
@@ -291,9 +292,15 @@ def get_scores(location_id: LocationId = None, database_url: Optional[str] = Non
 
     thresholds = calculate_thresholds(hourly_history)
     current_readings = get_last_hour_total(live_minutes, reference_time=reference_time)
-    scored = classify_current_conditions(
-        thresholds, current_readings, hourly_history, observed_at=reference_time
+
+    latest_per_sensor = (
+        live_minutes.groupby("location_id")["sensing_datetime"].max()
+        .rename("observed_at")
+        .reset_index()
     )
+
+    scored = classify_current_conditions(thresholds, current_readings, hourly_history)
+    scored = scored.merge(latest_per_sensor, on="location_id", how="left")
 
     sensor_coords = fetch_sensor_coordinates(location_id, database_url)
     refuges = fetch_refuge_landmarks(database_url)
