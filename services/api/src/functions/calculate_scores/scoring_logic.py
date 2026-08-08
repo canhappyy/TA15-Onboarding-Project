@@ -167,7 +167,7 @@ def classify_current_conditions(
     merged["used_fallback"] = merged["current_count"].isna()
     merged["reading_used"] = merged["current_count"].fillna(merged["historical_avg"])
     merged["level"] = np.where(merged["reading_used"] >= merged["threshold"], "High", "Low")
-    merged["observed_at"] = np.where(merged["used_fallback"], None, observed_at)
+    merged["observed_at"] = pd.Series(observed_at, index=merged.index).where(~merged["used_fallback"])
 
     return merged[["location_id", "reading_used", "threshold", "level", "used_fallback", "observed_at"]]
 
@@ -260,6 +260,26 @@ def add_sensory_level(
     return df.drop(columns=["latitude", "longitude"])
 
 
+# Gets sensor name and coordinates, needed for the API response
+def fetch_sensor_details(
+    location_id: LocationId = None,
+    database_url: Optional[str] = None,
+) -> pd.DataFrame:
+    if database_url is None:
+        config = _load_config()
+        database_url = config.DATABASE_URL
+    engine = create_engine(str(database_url))
+
+    where_clause, params = _location_filter(location_id)
+    query = text(f"""
+        SELECT location_id, sensor_description, latitude, longitude
+        FROM sensor_location
+        WHERE 1=1 {where_clause}
+    """)
+    with engine.connect() as conn:
+        return pd.read_sql(query, conn, params=params)
+
+
 # ------------------------------------------------------------
 # Shortcut: fetch + score
 # ------------------------------------------------------------
@@ -275,8 +295,6 @@ def get_scores(location_id: LocationId = None, database_url: Optional[str] = Non
         thresholds, current_readings, hourly_history, observed_at=reference_time
     )
 
-    # Everything below this line is unchanged -- calling their functions
-    # exactly as they wrote them, no modifications to their code
     sensor_coords = fetch_sensor_coordinates(location_id, database_url)
     refuges = fetch_refuge_landmarks(database_url)
     return add_sensory_level(scored, sensor_coords, refuges)
