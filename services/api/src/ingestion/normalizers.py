@@ -107,7 +107,13 @@ def normalize_hourly_counts(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]
             location_id = _required_location_id(row)
             sensing_datetime = _hourly_datetime(row)
             total_count = _required_count(
-                _value(row, "Total_of_Directions", "total_of_directions", "total_count")
+                _value(
+                    row,
+                    "Total_of_Directions",
+                    "total_of_directions",
+                    "total_count",
+                    "pedestriancount",
+                )
             )
             direction_1 = _optional_count(
                 _value(row, "Direction_1", "direction_1", "direction_1_count")

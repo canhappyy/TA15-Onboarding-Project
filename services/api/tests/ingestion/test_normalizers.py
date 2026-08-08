@@ -111,6 +111,24 @@ def test_hourly_normalizer_shifts_nonexistent_dst_hour_forward():
     assert result["records"][0]["sensing_datetime"] == "2026-10-04T03:00:00+11:00"
 
 
+def test_hourly_normalizer_accepts_live_api_pedestrian_count():
+    result = normalize_hourly_counts(
+        [
+            {
+                "location_id": 9,
+                "sensing_date": "2026-08-01",
+                "hourday": 6,
+                "direction_1": 28,
+                "direction_2": 191,
+                "pedestriancount": 219,
+            }
+        ]
+    )
+
+    assert result["rejected_count"] == 0
+    assert result["records"][0]["total_count"] == 219
+
+
 def test_landmark_normalizer_preserves_raw_categories_duplicates_and_null_coordinates():
     result = normalize_landmarks(_records("landmarks.csv"))
     expected = _expectations("landmarks")
