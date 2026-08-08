@@ -3,7 +3,7 @@ import ingest_pedestrian_hourly
 from tests.pipeline.conftest import FakeEngine
 
 
-def test_hourly_loader_records_chunking_backfill_duplicates_and_fixed_offset(
+def test_hourly_loader_records_chunking_backfill_duplicates_and_melbourne_offsets(
     monkeypatch, capture_to_sql, pipeline_fixture_dir, pipeline_expectations
 ):
     engine = FakeEngine(select_rows=[(1,), (2,)])
@@ -24,5 +24,4 @@ def test_hourly_loader_records_chunking_backfill_duplicates_and_fixed_offset(
     assert stats["rows"] == expected["row_count"]
     assert "DELETE FROM pedestrian_hourly_count" in statements
     assert "Unknown (historical, ID 99)" in str(engine.connection.statements)
-    assert frame["sensing_datetime"].str.endswith("+10:00").all()
     assert frame["sensing_datetime"].tolist() == expected["timestamps"]

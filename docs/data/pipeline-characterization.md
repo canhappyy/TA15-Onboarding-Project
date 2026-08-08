@@ -41,7 +41,7 @@ Fixtures live in `services/api/tests/fixtures/pipeline`. `expectations.json` del
 - Duplicate `(location_id, sensing_datetime)` rows keep the first row within a chunk.
 - Historical sensor identifiers absent from metadata receive inactive stub records.
 - Missing hours remain absent.
-- Every timestamp receives a hard-coded `+10:00` offset.
+- Timestamps use `Australia/Melbourne`, producing `+10:00` in winter and `+11:00` in summer.
 - Existing hourly rows are deleted before the load.
 
 ### Landmarks
@@ -65,7 +65,7 @@ Fixtures live in `services/api/tests/fixtures/pipeline`. `expectations.json` del
 | Chunked hourly processing        | Valid concept                                  | Preserve bounded batches                                                  |
 | Table-wide deletion              | Unsafe for schedules and foreign keys          | Replace in new repository with upserts                                    |
 | Missing minute to zero           | Hides unavailable data and can bias scores Low | Omit missing rows in new normalizer                                       |
-| Fixed UTC+10                     | Wrong during Melbourne daylight saving         | Use `Australia/Melbourne` in new normalizer                               |
+| Melbourne timezone localization | Valid                                          | Port unchanged                                                            |
 | Park/Garden-only refuge flag     | Incomplete for US2.1                           | Retain raw classification and map required categories outside legacy code |
 | pandas and SQLAlchemy coupling   | Too heavy for the planned Lambda ZIP           | Use plain dictionaries and psycopg in new ingestion code                  |
 | Source-latest five-minute window | Can miss records after delayed runs            | Use checkpoint watermark plus overlap in new sync client                  |
