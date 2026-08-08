@@ -17,6 +17,7 @@ from scoring_logic import (
     calculate_thresholds,
     get_last_hour_total,
     classify_current_conditions,
+    add_sensory_level,
 )
  
 
@@ -212,6 +213,57 @@ def test_threshold_with_single_data_point():
     print("PASS: single data point handled correctly")
 
 
+# ---------------------------------------------------
+# add_sensory_level
+# ---------------------------------------------------
+def test_sensory_level_downgrades_high_near_refuge():
+    """
+    Objective: a High-congestion sensor within radius_m of a refuge should
+               downgrade to sensory_level Low
+    Input:     sensor at (0, 0), refuge at (0, 0.001) (~111m away), level=High, radius_m=300
+    Expected:  refuge_nearby=True, sensory_level=Low
+    """
+    scored = pd.DataFrame({"location_id": [1], "level": ["High"]})
+    sensor_coords = pd.DataFrame({"location_id": [1], "latitude": [0.0], "longitude": [0.0]})
+    refuges = pd.DataFrame({"latitude": [0.001], "longitude": [0.0]})
+
+    result = add_sensory_level(scored, sensor_coords, refuges, radius_m=300)
+    assert result.iloc[0]["refuge_nearby"] == True
+    assert result.iloc[0]["sensory_level"] == "Low"
+    print("PASS: High congestion near a refuge downgrades to sensory_level Low")
+
+
+def test_sensory_level_stays_high_when_no_refuge_nearby():
+    """
+    Objective: a High-congestion sensor with no refuge within radius_m stays High
+    Input:     sensor at (0, 0), refuge far away at (10, 10), level=High, radius_m=300
+    Expected:  refuge_nearby=False, sensory_level=High
+    """
+    scored = pd.DataFrame({"location_id": [1], "level": ["High"]})
+    sensor_coords = pd.DataFrame({"location_id": [1], "latitude": [0.0], "longitude": [0.0]})
+    refuges = pd.DataFrame({"latitude": [10.0], "longitude": [10.0]})
+
+    result = add_sensory_level(scored, sensor_coords, refuges, radius_m=300)
+    assert result.iloc[0]["refuge_nearby"] == False
+    assert result.iloc[0]["sensory_level"] == "High"
+    print("PASS: High congestion with no nearby refuge stays sensory_level High")
+
+
+def test_sensory_level_matches_level_when_low():
+    """
+    Objective: a Low-congestion sensor is always sensory_level Low, regardless of refuges
+    Input:     sensor at (0, 0), no refuges at all, level=Low
+    Expected:  sensory_level=Low
+    """
+    scored = pd.DataFrame({"location_id": [1], "level": ["Low"]})
+    sensor_coords = pd.DataFrame({"location_id": [1], "latitude": [0.0], "longitude": [0.0]})
+    refuges = pd.DataFrame({"latitude": [], "longitude": []})
+
+    result = add_sensory_level(scored, sensor_coords, refuges, radius_m=300)
+    assert result.iloc[0]["sensory_level"] == "Low"
+    print("PASS: Low congestion is always sensory_level Low")
+
+
 
 
 if __name__ == "__main__":
@@ -225,4 +277,7 @@ if __name__ == "__main__":
     test_classification_end_to_end()
     test_all_sensors_fallback_when_no_current_data()
     test_threshold_with_single_data_point()
-    print("\nAll 10 tests passed (100% pass rate).")
+    test_sensory_level_downgrades_high_near_refuge()
+    test_sensory_level_stays_high_when_no_refuge_nearby()
+    test_sensory_level_matches_level_when_low()
+    print("\nAll 13 tests passed (100% pass rate).")
