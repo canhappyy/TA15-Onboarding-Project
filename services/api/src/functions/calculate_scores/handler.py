@@ -4,8 +4,7 @@
 
  
 import json
- 
-from scoring_logic import get_scores
+from src.functions.calculate_scores.scoring_logic import get_scores
  
  
 def lambda_handler(event, context):
@@ -24,6 +23,8 @@ def lambda_handler(event, context):
     body = {
         "sensor_id": int(row["location_id"]),
         "level": row["level"],
+        "sensory_level": row["sensory_level"],
+        "refuge_nearby": bool(row["refuge_nearby"]),
         "reading_used": float(row["reading_used"]),
         "threshold": float(row["threshold"]),
         "used_fallback": bool(row["used_fallback"]),

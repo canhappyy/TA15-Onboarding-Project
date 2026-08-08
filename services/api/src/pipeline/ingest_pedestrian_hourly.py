@@ -12,11 +12,12 @@ readings as a data-quality signal instead.
 """
 from sqlalchemy import create_engine, text
 import pandas as pd
+from zoneinfo import ZoneInfo
 
 import config
 
 CHUNK_SIZE = 200_000
-
+MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
 
 def _prepare_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
     chunk = chunk.rename(
@@ -27,12 +28,21 @@ def _prepare_chunk(chunk: pd.DataFrame) -> pd.DataFrame:
             "Total_of_Directions": "total_count",
         }
     )
-    chunk["sensing_datetime"] = (
-        pd.to_datetime(chunk["Sensing_Date"]).dt.strftime("%Y-%m-%d")
-        + "T"
-        + chunk["HourDay"].astype(int).astype(str).str.zfill(2)
-        + ":00:00+10:00"
+
+    # Build a naive local timestamp from the date + hour columns, then
+    # localize with real Melbourne DST rules (AEST/+10:00 vs AEDT/+11:00)
+    # instead of a hardcoded offset -- matches the approach in
+    # clients/open_data_client.py for the minute-level feed.
+    naive_local = pd.to_datetime(
+        chunk["Sensing_Date"]).dt.strftime("%Y-%m-%d")
+    naive_local = pd.to_datetime(
+        naive_local + " " + chunk["HourDay"].astype(int).astype(str).str.zfill(2) + ":00:00"
     )
+    localized = naive_local.dt.tz_localize(
+        MELBOURNE_TZ, ambiguous=True, nonexistent="shift_forward"
+    )
+    chunk["sensing_datetime"] = localized.apply(lambda ts: ts.isoformat())
+
     return chunk[
         ["location_id", "sensing_datetime", "direction_1_count", "direction_2_count", "total_count"]
     ]
