@@ -100,6 +100,8 @@ describe("LeafletMap", () => {
       "-37.8146,144.9681"
     )
     expect(screen.getByText("Treasury Gardens")).toBeInTheDocument()
+    expect(screen.getByText("Park")).toBeInTheDocument()
+    expect(screen.getByText("0.6 km away")).toBeInTheDocument()
     const link = screen.getByRole("link", { name: "Navigate to Treasury Gardens" })
     expect(link).toHaveAttribute("href", refuge.navigationUrl)
     expect(link).toHaveAttribute("target", "_blank")

@@ -27,6 +27,10 @@ function ChangeMapView({
 
 const EMPTY_ROUTES: Route[] = []
 
+function formatRefugeCategory(category: Refuge["category"]) {
+  return category[0] + category.slice(1).toLowerCase()
+}
+
 interface LeafletMapProps {
   origin?: Coordinates | null
   destination?: Coordinates | null
@@ -119,6 +123,7 @@ export function LeafletMap({
         >
           <Popup>
             <strong>{refuge.name}</strong>
+            <p>{formatRefugeCategory(refuge.category)}</p>
             <p>{refuge.walkingDistanceKm.toFixed(1)} km away</p>
             <a
               href={refuge.navigationUrl}

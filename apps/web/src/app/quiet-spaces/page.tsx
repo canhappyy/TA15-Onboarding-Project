@@ -2,7 +2,7 @@
 
 import { Map } from "@/components/map/map"
 import { useQuietSpaces } from "@/hooks/use-quiet-spaces"
-import { QuietSpaceFilterComponent } from "@/components/quiet-spaces/quiet-space-filter"
+import { RefugeCategoryFilter } from "@/components/refuges/refuge-category-filter"
 import { QuietSpaceCard } from "@/components/quiet-spaces/quiet-space-card"
 import { AppLogo } from "@/components/shared/app-logo"
 
@@ -21,7 +21,7 @@ export default function QuietSpacesPage() {
       </h1>
 
       {/* Category filters */}
-      <QuietSpaceFilterComponent
+      <RefugeCategoryFilter
         activeFilter={quietSpaces.activeFilter}
         onToggleFilter={quietSpaces.toggleFilter}
       />
