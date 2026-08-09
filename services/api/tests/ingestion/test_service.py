@@ -228,6 +228,7 @@ def test_static_sync_writes_sensors_before_landmarks_with_checkpoints():
     assert set(store.checkpoints) == {"sensors", "landmarks"}
     assert result["mode"] == "static"
     assert result["datasets"]["sensors"]["inserted"] == 1
+    assert "freshness" not in result
     assert all(connection.committed for connection in store.connections)
 
 
@@ -266,12 +267,46 @@ def test_status_is_read_only_serializable_and_bypasses_ingestion_lock():
 
     assert result["mode"] == "status"
     assert result["tables"]["minute"]["latest_timestamp"] == NOW.isoformat()
+    assert result["freshness"] == {
+        "minute": {
+            "observedAt": NOW.isoformat(),
+            "ageSeconds": 0,
+            "stale": False,
+            "thresholdSeconds": 2700,
+        }
+    }
     assert (
         result["checkpoints"]["sensors"]["last_completed_at"]
         == NOW.isoformat()
     )
     assert client.calls == []
     assert store.calls == [("read_ingestion_status",)]
+
+
+@pytest.mark.parametrize(
+    ("observed_at", "age_seconds", "stale"),
+    [
+        (NOW - timedelta(minutes=45), 2700, False),
+        (NOW - timedelta(minutes=45, seconds=1), 2701, True),
+        (None, None, True),
+        (NOW + timedelta(minutes=5), 0, False),
+    ],
+)
+def test_status_classifies_minute_freshness_boundaries(
+    observed_at, age_seconds, stale
+):
+    store = Store()
+    store.ingestion_status["tables"]["minute"]["latest_timestamp"] = observed_at
+    service, _store, _client = build_service(store=store)
+
+    result = service.run("status")
+
+    assert result["freshness"]["minute"] == {
+        "observedAt": observed_at.isoformat() if observed_at else None,
+        "ageSeconds": age_seconds,
+        "stale": stale,
+        "thresholdSeconds": 2700,
+    }
 
 
 def test_static_sync_passes_required_refuge_classification_to_repository():
@@ -299,6 +334,29 @@ def test_minute_sync_uses_checkpoint_overlap_and_commits_checkpoint_atomically()
         "updated": 0,
         "rejected": 0,
         "duplicates_resolved": 0,
+    }
+    assert result["freshness"] == {
+        "minute": {
+            "observedAt": "2026-08-08T21:55:00+10:00",
+            "ageSeconds": 300,
+            "stale": False,
+            "thresholdSeconds": 2700,
+        }
+    }
+
+
+def test_minute_sync_marks_missing_observation_stale():
+    client = FakeClient()
+    client.fetch_minute_counts = lambda **_kwargs: []
+    service, _store, _client = build_service(client=client)
+
+    result = service.run("minute")
+
+    assert result["freshness"]["minute"] == {
+        "observedAt": None,
+        "ageSeconds": None,
+        "stale": True,
+        "thresholdSeconds": 2700,
     }
 
 
@@ -354,6 +412,9 @@ def test_bootstrap_runs_sensors_90_hourly_days_minute_then_landmarks():
     assert hourly_calls[0] == ("hourly", date(2026, 5, 10), date(2026, 5, 11))
     assert hourly_calls[-1] == ("hourly", date(2026, 8, 7), date(2026, 8, 8))
     assert result["datasets"]["hourly"]["inserted"] == 90
+    assert result["freshness"]["minute"]["observedAt"] == (
+        "2026-08-08T21:55:00+10:00"
+    )
     assert set(store.checkpoints) == {"sensors", "hourly", "minute", "landmarks"}
 
 
