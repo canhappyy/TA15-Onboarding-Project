@@ -69,6 +69,27 @@ locals {
     ],
   ))
 
+  refuge_search_image_files = sort(concat(
+    [
+      ".dockerignore",
+      "services/api/src/functions/refuge_search/Dockerfile",
+      "services/api/requirements-database-tools.txt",
+      local.image_manage_file,
+      "services/api/src/functions/location_search/assets/city-of-melbourne-boundary-2022.geojson",
+    ],
+    flatten([
+      for directory in ["clients", "common", "repositories", "services"] :
+      [
+        for file_name in fileset("${local.repository_root}/services/api/src/${directory}", "**/*.py") :
+        "services/api/src/${directory}/${file_name}"
+      ]
+    ]),
+    [
+      for file_name in fileset("${local.repository_root}/services/api/src/functions/refuge_search", "**/*.py") :
+      "services/api/src/functions/refuge_search/${file_name}"
+    ],
+  ))
+
   ingestion_image_hash = sha256(join("", [
     for file_name in local.ingestion_image_files :
     "${file_name}:${filesha256("${local.repository_root}/${file_name}")}"
@@ -85,16 +106,22 @@ locals {
     for file_name in local.route_search_image_files :
     "${file_name}:${filesha256("${local.repository_root}/${file_name}")}"
   ]))
+  refuge_search_image_hash = sha256(join("", [
+    for file_name in local.refuge_search_image_files :
+    "${file_name}:${filesha256("${local.repository_root}/${file_name}")}"
+  ]))
 
   ingestion_image_tag          = "sha-${substr(local.ingestion_image_hash, 0, 20)}"
   database_migration_image_tag = "sha-${substr(local.database_migration_image_hash, 0, 20)}"
   rds_connectivity_image_tag   = "sha-${substr(local.rds_connectivity_image_hash, 0, 20)}"
   route_search_image_tag       = "sha-${substr(local.route_search_image_hash, 0, 20)}"
+  refuge_search_image_tag      = "sha-${substr(local.refuge_search_image_hash, 0, 20)}"
 
   ingestion_image_uri          = "${aws_ecr_repository.ingestion.repository_url}@${data.aws_ecr_image.ingestion.image_digest}"
   database_migration_image_uri = "${aws_ecr_repository.database_migration.repository_url}@${data.aws_ecr_image.database_migration.image_digest}"
   rds_connectivity_image_uri   = "${aws_ecr_repository.rds_connectivity.repository_url}@${data.aws_ecr_image.rds_connectivity.image_digest}"
   route_search_image_uri       = "${aws_ecr_repository.route_search.repository_url}@${data.aws_ecr_image.route_search.image_digest}"
+  refuge_search_image_uri      = "${aws_ecr_repository.refuge_search.repository_url}@${data.aws_ecr_image.refuge_search.image_digest}"
 }
 
 data "aws_caller_identity" "current" {}
@@ -157,12 +184,27 @@ resource "aws_ecr_repository" "route_search" {
   }
 }
 
+resource "aws_ecr_repository" "refuge_search" {
+  name                 = "${local.name_prefix}-refuge-search"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+}
+
 resource "aws_ecr_repository_policy" "lambda_pull" {
   for_each = {
     ingestion          = aws_ecr_repository.ingestion.name
     database_migration = aws_ecr_repository.database_migration.name
     rds_connectivity   = aws_ecr_repository.rds_connectivity.name
     route_search       = aws_ecr_repository.route_search.name
+    refuge_search      = aws_ecr_repository.refuge_search.name
   }
 
   repository = each.value
@@ -196,6 +238,7 @@ resource "aws_ecr_lifecycle_policy" "lambda_images" {
     database_migration = aws_ecr_repository.database_migration.name
     rds_connectivity   = aws_ecr_repository.rds_connectivity.name
     route_search       = aws_ecr_repository.route_search.name
+    refuge_search      = aws_ecr_repository.refuge_search.name
   }
 
   repository = each.value
@@ -223,10 +266,12 @@ resource "terraform_data" "lambda_images" {
     local.database_migration_image_hash,
     local.rds_connectivity_image_hash,
     local.route_search_image_hash,
+    local.refuge_search_image_hash,
     aws_ecr_repository.ingestion.repository_url,
     aws_ecr_repository.database_migration.repository_url,
     aws_ecr_repository.rds_connectivity.repository_url,
     aws_ecr_repository.route_search.repository_url,
+    aws_ecr_repository.refuge_search.repository_url,
   ]
 
   provisioner "local-exec" {
@@ -242,6 +287,8 @@ resource "terraform_data" "lambda_images" {
       RDS_CONNECTIVITY_IMAGE_TAG        = local.rds_connectivity_image_tag
       ROUTE_SEARCH_REPOSITORY_URL       = aws_ecr_repository.route_search.repository_url
       ROUTE_SEARCH_IMAGE_TAG            = local.route_search_image_tag
+      REFUGE_SEARCH_REPOSITORY_URL      = aws_ecr_repository.refuge_search.repository_url
+      REFUGE_SEARCH_IMAGE_TAG           = local.refuge_search_image_tag
     }
   }
 }
@@ -270,6 +317,13 @@ data "aws_ecr_image" "rds_connectivity" {
 data "aws_ecr_image" "route_search" {
   repository_name = aws_ecr_repository.route_search.name
   image_tag       = local.route_search_image_tag
+
+  depends_on = [terraform_data.lambda_images]
+}
+
+data "aws_ecr_image" "refuge_search" {
+  repository_name = aws_ecr_repository.refuge_search.name
+  image_tag       = local.refuge_search_image_tag
 
   depends_on = [terraform_data.lambda_images]
 }

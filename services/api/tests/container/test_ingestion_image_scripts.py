@@ -58,6 +58,10 @@ def test_build_maps_each_function_to_local_dockerfile_and_arm64_context(tmp_path
             "src/functions/route_search/Dockerfile",
             str(REPOSITORY_ROOT),
         ),
+        "refuge_search": (
+            "src/functions/refuge_search/Dockerfile",
+            str(REPOSITORY_ROOT),
+        ),
     }
 
     for function_name, (dockerfile, context) in expected.items():
@@ -85,6 +89,7 @@ def test_verify_runs_function_specific_smoke_commands(tmp_path):
         "database_migration": ("load_migrations", "/var/task/migrations"),
         "rds_connectivity": ("import psycopg", "src.functions.rds_connectivity.handler"),
         "route_search": ("import psycopg", "src.functions.route_search.handler"),
+        "refuge_search": ("import psycopg", "src.functions.refuge_search.handler"),
     }
 
     for function_name, fragments in expected_fragments.items():
@@ -140,12 +145,14 @@ def _publish_environment(tmp_path: Path):
             "RDS_CONNECTIVITY_IMAGE_TAG": "sha-connectivity",
             "ROUTE_SEARCH_REPOSITORY_URL": "123.dkr.ecr.ap-southeast-4.amazonaws.com/route-search",
             "ROUTE_SEARCH_IMAGE_TAG": "sha-route-search",
+            "REFUGE_SEARCH_REPOSITORY_URL": "123.dkr.ecr.ap-southeast-4.amazonaws.com/refuge-search",
+            "REFUGE_SEARCH_IMAGE_TAG": "sha-refuge-search",
         }
     )
     return environment, docker_log
 
 
-def test_publish_all_pushes_four_missing_content_tags(tmp_path):
+def test_publish_all_pushes_five_missing_content_tags(tmp_path):
     environment, docker_log = _publish_environment(tmp_path)
     aws_log = tmp_path / "aws.log"
     aws = tmp_path / "aws"
@@ -171,15 +178,16 @@ def test_publish_all_pushes_four_missing_content_tags(tmp_path):
     assert sum(
         "describe-images" in line
         for line in aws_log.read_text(encoding="utf-8").splitlines()
-    ) == 4
+    ) == 5
     invocations = docker_log.read_text(encoding="utf-8").splitlines()
     builds = [line for line in invocations if line.startswith("buildx build ")]
-    assert len(builds) == 4
+    assert len(builds) == 5
     assert all("--push" in line and "--platform linux/arm64" in line for line in builds)
     assert any("ingestion:sha-ingestion" in line for line in builds)
     assert any("migration:sha-migration" in line for line in builds)
     assert any("connectivity:sha-connectivity" in line for line in builds)
     assert any("route-search:sha-route-search" in line for line in builds)
+    assert any("refuge-search:sha-refuge-search" in line for line in builds)
 
 
 def test_publish_all_skips_existing_tags_without_docker(tmp_path):

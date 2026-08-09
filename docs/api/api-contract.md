@@ -175,7 +175,15 @@ Query parameters:
 | `longitude` | Yes | Search-origin longitude. |
 | `category` | No | `LIBRARY`, `MUSEUM`, `GARDEN`, or `PARK`. |
 
-Returns at most 20 refuges within one kilometre.
+Only `latitude`, `longitude`, and optional `category` are accepted. The origin
+must fall inside the City of Melbourne boundary. The service preselects nearby
+refuges, requests one ORS foot-walking matrix, omits unreachable or over-one-
+kilometre destinations, then returns at most 20 sorted by walking distance,
+name, and landmark ID. `metadata.source` is always `City of Melbourne Open
+Data`; `navigationUrl` is a Google Maps walking-navigation link.
+
+Unavailable database data returns `503`, an ORS timeout returns `504`, and an
+ORS service failure returns `502`.
 
 ```json
 {

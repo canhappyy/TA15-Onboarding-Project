@@ -1,8 +1,8 @@
 # AWS infrastructure
 
 Terraform deploys ClearWay AWS resources. RDS connectivity, database migration,
-ingestion, and route search use Python 3.13 ARM64 container images. Health and
-location search remain ZIP Lambdas.
+ingestion, route search, and refuge search use Python 3.13 ARM64 container
+images. Health and location search remain ZIP Lambdas.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ terraform plan
 terraform apply
 ```
 
-The first `terraform apply` creates four private ECR repositories, then builds
+The first `terraform apply` creates five private ECR repositories, then builds
 and pushes content-addressed ARM64 images before creating the Lambdas. Existing
 immutable image tags are reused, so an interrupted apply can be retried. Source
 or dependency changes produce new tags automatically.
@@ -49,6 +49,9 @@ bash scripts/manage_lambda_images.sh verify rds_connectivity clearway-rds-connec
 
 bash scripts/manage_lambda_images.sh build route_search clearway-route-search:dev
 bash scripts/manage_lambda_images.sh verify route_search clearway-route-search:dev
+
+bash scripts/manage_lambda_images.sh build refuge_search clearway-refuge-search:dev
+bash scripts/manage_lambda_images.sh verify refuge_search clearway-refuge-search:dev
 ```
 
 Each containerized function owns the Dockerfile beside its handler. The one
@@ -143,4 +146,13 @@ curl --fail-with-body \
   --header 'Content-Type: application/json' \
   --data '{"origin":{"latitude":-37.8179,"longitude":144.9671},"destination":{"latitude":-37.8098,"longitude":144.9652}}' \
   "$(terraform output -raw route_search_endpoint)"
+```
+
+## Test refuge search
+
+After migrations, bootstrap ingestion, and ORS secret configuration:
+
+```bash
+curl --fail-with-body \
+  "$(terraform output -raw refuge_search_endpoint)?latitude=-37.8136&longitude=144.9631"
 ```
