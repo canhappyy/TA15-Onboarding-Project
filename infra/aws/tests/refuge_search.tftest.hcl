@@ -114,4 +114,24 @@ run "refuge_search_plan" {
     condition     = output.refuge_search_endpoint == "${aws_apigatewayv2_api.main.api_endpoint}/refuges"
     error_message = "Refuge search endpoint must be exported."
   }
+
+  assert {
+    condition     = aws_apigatewayv2_route.refuge_search_journey.route_key == "POST /refuges/search"
+    error_message = "API Gateway must expose POST /refuges/search."
+  }
+
+  assert {
+    condition     = aws_apigatewayv2_route.refuge_search_journey.target == "integrations/${aws_apigatewayv2_integration.refuge_search.id}"
+    error_message = "Journey refuge search must reuse the refuge Lambda integration."
+  }
+
+  assert {
+    condition     = aws_lambda_permission.allow_api_gateway_refuge_search_journey.source_arn == "${aws_apigatewayv2_api.main.execution_arn}/*/POST/refuges/search"
+    error_message = "Invoke permission must be limited to POST /refuges/search."
+  }
+
+  assert {
+    condition     = output.refuge_search_journey_endpoint == "${aws_apigatewayv2_api.main.api_endpoint}/refuges/search"
+    error_message = "Journey refuge endpoint must be exported."
+  }
 }

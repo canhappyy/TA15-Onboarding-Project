@@ -133,6 +133,11 @@ output "refuge_search_endpoint" {
   value       = "${aws_apigatewayv2_api.main.api_endpoint}/refuges"
 }
 
+output "refuge_search_journey_endpoint" {
+  description = "Journey quiet-space refuge search endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/refuges/search"
+}
+
 output "refuge_search_lambda_name" {
   description = "Name of the refuge-search Lambda"
   value       = aws_lambda_function.refuge_search.function_name

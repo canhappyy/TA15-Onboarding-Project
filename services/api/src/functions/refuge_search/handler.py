@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from base64 import b64decode
+import binascii
 from dataclasses import dataclass
 import json
 import logging
@@ -16,6 +18,7 @@ from src.clients.open_route_service import (
     OpenRouteServiceTimeout,
 )
 from src.common.geojson import load_geojson_geometry, point_in_geometry
+from src.common.route_geometry import validate_route_geometry
 from src.common.responses import error_response, success_response
 from src.repositories.api import BoundingBox, PostgresApiRepository, REFUGE_SUBTHEMES
 from src.services.refuge_search import (
@@ -41,6 +44,15 @@ class DatabaseSettings:
     host: str
     port: int
     dbname: str
+
+
+@dataclass(frozen=True)
+class RefugeRequest:
+    operation: str
+    origin: tuple[float, float]
+    category: str | None = None
+    route: tuple[tuple[float, float], ...] | None = None
+    categories: tuple[str, ...] | None = None
 
 
 class SecretsManagerReader:
@@ -113,6 +125,12 @@ class PsycopgRefugeSearchRuntime:
         self._database_errors = database_errors
 
     def search(self, origin, category=None):
+        return self._service().search(origin, category=category)
+
+    def search_route(self, route, *, categories=None):
+        return self._service().search_route(route, categories=categories)
+
+    def _service(self):
         api_key = self._secret_reader.get_ors_api_key(self._ors_secret_arn)
         username, password = self._secret_reader.get_database_credentials(
             self._database_secret_arn
@@ -125,10 +143,7 @@ class PsycopgRefugeSearchRuntime:
             repository_factory=self._repository_factory,
             database_errors=self._database_errors,
         )
-        return self._service_factory(self._matrix_factory(api_key), loader).search(
-            origin,
-            category=category,
-        )
+        return self._service_factory(self._matrix_factory(api_key), loader)
 
 
 class PsycopgRefugeDataLoader:
@@ -185,7 +200,7 @@ class PsycopgRefugeDataLoader:
 def lambda_handler(event, context, *, service=None, boundary_geometry=None):
     del context
     try:
-        origin, category = _parse_request(event)
+        request = _parse_request(event)
     except ValueError:
         return error_response(400, "INVALID_REQUEST", "A valid location is required.")
 
@@ -197,7 +212,13 @@ def lambda_handler(event, context, *, service=None, boundary_geometry=None):
             extra={"error_type": type(error).__name__},
         )
         return _internal_error()
-    if not point_in_geometry(origin[0], origin[1], boundary):
+    area_points = (request.origin,)
+    if request.route is not None:
+        area_points += (request.route[0], request.route[-1])
+    if not all(
+        point_in_geometry(longitude, latitude, boundary)
+        for longitude, latitude in area_points
+    ):
         return error_response(
             400,
             "OUTSIDE_SERVICE_AREA",
@@ -205,7 +226,14 @@ def lambda_handler(event, context, *, service=None, boundary_geometry=None):
         )
 
     try:
-        refuges = (service or _build_service()).search(origin, category=category)
+        refuge_service = service or _build_service()
+        if request.operation == "journey":
+            refuges = refuge_service.search_route(
+                request.route,
+                categories=request.categories,
+            )
+        else:
+            refuges = refuge_service.search(request.origin, category=request.category)
     except RefugeSearchDataUnavailable:
         return error_response(
             503,
@@ -230,7 +258,25 @@ def lambda_handler(event, context, *, service=None, boundary_geometry=None):
 
 
 def _parse_request(event):
-    parameters = event.get("queryStringParameters") if isinstance(event, dict) else None
+    if not isinstance(event, dict):
+        raise ValueError("event is invalid")
+    request_context = event.get("requestContext")
+    http = request_context.get("http") if isinstance(request_context, dict) else None
+    if request_context is not None and not isinstance(http, dict):
+        raise ValueError("request context is invalid")
+    if isinstance(http, dict):
+        method = http.get("method")
+        path = event.get("rawPath")
+        if method == "GET" and path == "/refuges":
+            return _parse_get_request(event)
+        if method == "POST" and path == "/refuges/search":
+            return _parse_journey_request(event)
+        raise ValueError("method or path is invalid")
+    return _parse_get_request(event)
+
+
+def _parse_get_request(event):
+    parameters = event.get("queryStringParameters")
     if not isinstance(parameters, dict) or set(parameters) not in (
         {"latitude", "longitude"},
         {"latitude", "longitude", "category"},
@@ -241,7 +287,66 @@ def _parse_request(event):
     category = parameters.get("category")
     if category is not None and category not in REFUGE_SUBTHEMES:
         raise ValueError("category is unsupported")
-    return (longitude, latitude), category
+    return RefugeRequest(
+        operation="point",
+        origin=(longitude, latitude),
+        category=category,
+    )
+
+
+def _parse_journey_request(event):
+    body = event.get("body")
+    if not isinstance(body, str):
+        raise ValueError("body must be JSON")
+    if event.get("isBase64Encoded") is True:
+        try:
+            body = b64decode(body, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError, ValueError) as error:
+            raise ValueError("body must be valid base64 JSON") from error
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as error:
+        raise ValueError("body must be JSON") from error
+    if not isinstance(payload, dict) or set(payload) not in (
+        {"origin", "route"},
+        {"origin", "route", "categories"},
+    ):
+        raise ValueError("origin, route, and optional categories are required")
+    origin = _parse_json_coordinates(payload["origin"])
+    route = validate_route_geometry(payload["route"])
+    categories = (
+        _parse_categories(payload["categories"]) if "categories" in payload else None
+    )
+    return RefugeRequest(
+        operation="journey",
+        origin=origin,
+        route=route,
+        categories=categories,
+    )
+
+
+def _parse_json_coordinates(value):
+    if not isinstance(value, dict) or set(value) != {"latitude", "longitude"}:
+        raise ValueError("coordinates are invalid")
+    latitude = value["latitude"]
+    longitude = value["longitude"]
+    if not _finite_number(latitude) or not _finite_number(longitude):
+        raise ValueError("coordinates are invalid")
+    if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        raise ValueError("coordinates are invalid")
+    return float(longitude), float(latitude)
+
+
+def _parse_categories(value):
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(not isinstance(category, str) for category in value)
+        or len(set(value)) != len(value)
+        or any(category not in REFUGE_SUBTHEMES for category in value)
+    ):
+        raise ValueError("categories are invalid")
+    return tuple(value)
 
 
 def _parse_coordinate(value, lower, upper):
@@ -254,6 +359,14 @@ def _parse_coordinate(value, lower, upper):
     if not math.isfinite(coordinate) or not lower <= coordinate <= upper:
         raise ValueError("coordinate is invalid")
     return coordinate
+
+
+def _finite_number(value):
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 def _search_bounds(origin):

@@ -105,10 +105,26 @@ resource "aws_apigatewayv2_route" "refuge_search" {
   authorization_type = "NONE"
 }
 
+resource "aws_apigatewayv2_route" "refuge_search_journey" {
+  api_id = aws_apigatewayv2_api.main.id
+
+  route_key          = "POST /refuges/search"
+  target             = "integrations/${aws_apigatewayv2_integration.refuge_search.id}"
+  authorization_type = "NONE"
+}
+
 resource "aws_lambda_permission" "allow_api_gateway_refuge_search" {
   statement_id  = "AllowApiGatewayInvokeRefugeSearch"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.refuge_search.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/GET/refuges"
+}
+
+resource "aws_lambda_permission" "allow_api_gateway_refuge_search_journey" {
+  statement_id  = "AllowApiGatewayInvokeRefugeSearchJourney"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.refuge_search.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/POST/refuges/search"
 }

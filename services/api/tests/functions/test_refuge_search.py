@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from base64 import b64encode
 
 import pytest
 
@@ -45,6 +46,12 @@ class FakeService:
             raise self.error
         return self.refuges
 
+    def search_route(self, route, *, categories=None):
+        self.calls.append((route, categories))
+        if self.error:
+            raise self.error
+        return self.refuges
+
 
 def invoke(parameters, *, service=None, boundary=BOUNDARY):
     return lambda_handler(
@@ -59,6 +66,28 @@ def decode(response):
     return response["statusCode"], json.loads(response["body"])
 
 
+def journey_event(payload, *, base64_encoded=False):
+    body = json.dumps(payload)
+    if base64_encoded:
+        body = b64encode(body.encode()).decode()
+    return {
+        "version": "2.0",
+        "rawPath": "/refuges/search",
+        "requestContext": {"http": {"method": "POST"}},
+        "isBase64Encoded": base64_encoded,
+        "body": body,
+    }
+
+
+JOURNEY = {
+    "origin": {"latitude": -37.8136, "longitude": 144.9631},
+    "route": {
+        "type": "LineString",
+        "coordinates": [[144.9631, -37.8136], [144.9731, -37.8136]],
+    },
+}
+
+
 def test_handler_returns_refuges_in_common_envelope():
     service = FakeService()
 
@@ -67,6 +96,135 @@ def test_handler_returns_refuges_in_common_envelope():
     assert status == 200
     assert body == {"success": True, "data": {"refuges": [{"id": "refuge-1"}]}}
     assert service.calls == [((144.9631, -37.8136), None)]
+
+
+def test_handler_dispatches_exact_post_journey_route_with_categories():
+    service = FakeService()
+
+    status, body = decode(
+        lambda_handler(
+            journey_event({**JOURNEY, "categories": ["PARK", "LIBRARY"]}),
+            None,
+            service=service,
+            boundary_geometry=BOUNDARY,
+        )
+    )
+
+    assert status == 200
+    assert body == {"success": True, "data": {"refuges": [{"id": "refuge-1"}]}}
+    assert service.calls == [
+        (
+            ((144.9631, -37.8136), (144.9731, -37.8136)),
+            ("PARK", "LIBRARY"),
+        )
+    ]
+
+
+def test_handler_decodes_base64_post_journey_body():
+    service = FakeService()
+
+    status, _ = decode(
+        lambda_handler(
+            journey_event(JOURNEY, base64_encoded=True),
+            None,
+            service=service,
+            boundary_geometry=BOUNDARY,
+        )
+    )
+
+    assert status == 200
+    assert service.calls == [
+        (((144.9631, -37.8136), (144.9731, -37.8136)), None)
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**JOURNEY, "extra": "x"},
+        {**JOURNEY, "categories": None},
+        {**JOURNEY, "categories": []},
+        {**JOURNEY, "categories": ["PARK", "PARK"]},
+        {**JOURNEY, "categories": ["park"]},
+        {**JOURNEY, "origin": {"latitude": "-37.8136", "longitude": 144.9631}},
+        {**JOURNEY, "route": {"type": "LineString", "coordinates": [[144.9631, -37.8136]]}},
+        {**JOURNEY, "route": {"type": "LineString", "coordinates": [[144.9631, -37.8136], [math.nan, -37.8136]]}},
+    ],
+)
+def test_handler_rejects_invalid_post_journey_payload_without_calling_service(payload):
+    service = FakeService()
+
+    status, body = decode(
+        lambda_handler(
+            journey_event(payload),
+            None,
+            service=service,
+            boundary_geometry=BOUNDARY,
+        )
+    )
+
+    assert status == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert service.calls == []
+
+
+def test_handler_rejects_journey_origin_or_route_endpoint_outside_city_without_service():
+    service = FakeService()
+    outside_endpoint = {
+        **JOURNEY,
+        "route": {
+            "type": "LineString",
+            "coordinates": [[144.9631, -37.8136], [144.9631, -37.90]],
+        },
+    }
+
+    status, body = decode(
+        lambda_handler(
+            journey_event(outside_endpoint),
+            None,
+            service=service,
+            boundary_geometry=BOUNDARY,
+        )
+    )
+
+    assert status == 400
+    assert body["error"]["code"] == "OUTSIDE_SERVICE_AREA"
+    assert service.calls == []
+
+
+def test_handler_rejects_production_event_with_wrong_method_or_path():
+    service = FakeService()
+    event = journey_event(JOURNEY)
+    event["requestContext"]["http"]["method"] = "GET"
+
+    status, body = decode(
+        lambda_handler(event, None, service=service, boundary_geometry=BOUNDARY)
+    )
+
+    assert status == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert service.calls == []
+
+
+def test_handler_rejects_production_event_without_http_method_and_path():
+    service = FakeService()
+
+    status, body = decode(
+        lambda_handler(
+            {
+                "version": "2.0",
+                "requestContext": {},
+                "queryStringParameters": PARAMETERS,
+            },
+            None,
+            service=service,
+            boundary_geometry=BOUNDARY,
+        )
+    )
+
+    assert status == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert service.calls == []
 
 
 @pytest.mark.parametrize(
@@ -269,6 +427,39 @@ def test_runtime_maps_only_database_driver_errors_to_data_unavailable():
 
     with pytest.raises(RefugeSearchDataUnavailable):
         runtime.search((144.9631, -37.8136))
+
+
+def test_runtime_builds_route_service_for_journey_search():
+    class SecretReader:
+        def get_ors_api_key(self, secret_arn):
+            return "ors-key"
+
+        def get_database_credentials(self, secret_arn):
+            return "reader", "db-pass"
+
+    class RouteService:
+        def __init__(self):
+            self.calls = []
+
+        def search_route(self, route, *, categories=None):
+            self.calls.append((route, categories))
+            return [{"id": "refuge-1"}]
+
+    route_service = RouteService()
+    runtime = PsycopgRefugeSearchRuntime(
+        settings=DatabaseSettings("db.internal", 5432, "clearway"),
+        ors_secret_arn="ors",
+        database_secret_arn="database",
+        secret_reader=SecretReader(),
+        connect=lambda **kwargs: None,
+        matrix_factory=lambda api_key: object(),
+        service_factory=lambda matrix, loader: route_service,
+        database_errors=(RuntimeError,),
+    )
+    route = ((144.9631, -37.8136), (144.9731, -37.8136))
+
+    assert runtime.search_route(route, categories=("PARK",)) == [{"id": "refuge-1"}]
+    assert route_service.calls == [(route, ("PARK",))]
 
 
 def test_secret_reader_reads_reused_ors_and_read_only_database_secrets():
