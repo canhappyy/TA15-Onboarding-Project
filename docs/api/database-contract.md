@@ -2,6 +2,10 @@
 
 The ingestion pipeline owns writes. Public API handlers and repositories use read-only database access.
 
+Route search authenticates as `clearway_route_api`, which inherits only the
+`clearway_api_readonly` role. That role has database connection, schema usage,
+and table `SELECT`; it has no data mutation or schema creation grants.
+
 ## Sensors and live totals
 
 - Only active sensors with valid latitude and longitude are eligible.

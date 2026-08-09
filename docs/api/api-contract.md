@@ -141,6 +141,11 @@ Response:
 
 Accepted journeys return at least two distinct candidate routes. Routes sort by sensory score ascending, then duration ascending. Every route remains selectable. `warning` is non-null when high pedestrian density or stale/unavailable live data must be disclosed.
 
+The current provisional score uses 85% pedestrian-density exposure and 15%
+nearby-refuge coverage. Team or mentor approval of these weights remains a
+release gate. Live data is stale when the latest matched-sensor observation is
+missing or older than 30 minutes.
+
 ## `POST /refuges/search`
 
 Returns refuges within one kilometre of a journey route.
