@@ -90,7 +90,7 @@ def test_handler_returns_status_shape_without_requiring_dataset_statistics():
 
 @pytest.mark.parametrize("mode", ["minute", "bootstrap"])
 def test_successful_minute_work_emits_exact_freshness_metrics(
-    mode, caplog, monkeypatch
+    mode, capsys, monkeypatch
 ):
     monkeypatch.setenv("METRIC_NAMESPACE", "ClearWay/Ingestion")
     monkeypatch.setenv("ENVIRONMENT", "dev")
@@ -107,13 +107,12 @@ def test_successful_minute_work_emits_exact_freshness_metrics(
         },
     }
 
-    with caplog.at_level("INFO", logger="ingestion"):
-        lambda_handler({"mode": mode}, None, service=FakeService(result=result))
+    lambda_handler({"mode": mode}, None, service=FakeService(result=result))
 
     metric = next(
-        json.loads(record.message)
-        for record in caplog.records
-        if "MinuteDataFresh" in record.message
+        json.loads(line)
+        for line in capsys.readouterr().out.splitlines()
+        if "MinuteDataFresh" in line
     )
     assert metric["event"] == "pedestrian_minute_freshness"
     assert metric["mode"] == mode
@@ -133,7 +132,7 @@ def test_successful_minute_work_emits_exact_freshness_metrics(
 
 
 def test_missing_observation_emits_stale_gauge_without_age_metric(
-    caplog, monkeypatch
+    capsys, monkeypatch
 ):
     monkeypatch.setenv("METRIC_NAMESPACE", "ClearWay/Ingestion")
     monkeypatch.setenv("ENVIRONMENT", "dev")
@@ -150,15 +149,14 @@ def test_missing_observation_emits_stale_gauge_without_age_metric(
         },
     }
 
-    with caplog.at_level("INFO", logger="ingestion"):
-        lambda_handler(
-            {"mode": "minute"}, None, service=FakeService(result=result)
-        )
+    lambda_handler(
+        {"mode": "minute"}, None, service=FakeService(result=result)
+    )
 
     metric = next(
-        json.loads(record.message)
-        for record in caplog.records
-        if "MinuteDataFresh" in record.message
+        json.loads(line)
+        for line in capsys.readouterr().out.splitlines()
+        if "MinuteDataFresh" in line
     )
     assert metric["MinuteDataFresh"] == 0
     assert "MinuteDataAgeSeconds" not in metric
@@ -184,12 +182,11 @@ def test_missing_observation_emits_stale_gauge_without_age_metric(
     ],
 )
 def test_non_ingesting_results_do_not_emit_freshness_metrics(
-    mode, result, caplog
+    mode, result, capsys
 ):
-    with caplog.at_level("INFO", logger="ingestion"):
-        lambda_handler({"mode": mode}, None, service=FakeService(result=result))
+    lambda_handler({"mode": mode}, None, service=FakeService(result=result))
 
-    assert all("MinuteDataFresh" not in record.message for record in caplog.records)
+    assert "MinuteDataFresh" not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("event", [None, {}, {"mode": None}, {"mode": "all"}])

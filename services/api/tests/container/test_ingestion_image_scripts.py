@@ -122,7 +122,7 @@ def test_verify_runs_function_specific_smoke_commands(tmp_path):
         )
         assert "--platform linux/arm64" in invocation
         assert "--entrypoint python" in invocation
-    assert all(fragment in invocation for fragment in fragments)
+        assert all(fragment in invocation for fragment in fragments)
 
 
 def test_ingestion_verify_checks_health_response_and_emf_metrics(tmp_path):

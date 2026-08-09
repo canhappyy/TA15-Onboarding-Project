@@ -345,11 +345,12 @@ class IngestionService:
             }
         reference_time = self._coerce_datetime(self._clock())
         assert reference_time is not None
-        age_seconds = max(0, int((reference_time - observed).total_seconds()))
+        age = max(timedelta(0), reference_time - observed)
+        age_seconds = int(age.total_seconds())
         return {
             "observedAt": observed.isoformat(),
             "ageSeconds": age_seconds,
-            "stale": age_seconds > threshold_seconds,
+            "stale": age > MINUTE_FRESHNESS_THRESHOLD,
             "thresholdSeconds": threshold_seconds,
         }
 

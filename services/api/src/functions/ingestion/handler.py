@@ -166,4 +166,4 @@ def _emit_minute_freshness(mode: str, result: dict[str, Any]) -> None:
     if isinstance(age_seconds, int) and age_seconds >= 0:
         metrics.append({"Name": "MinuteDataAgeSeconds", "Unit": "Seconds"})
         payload["MinuteDataAgeSeconds"] = age_seconds
-    LOGGER.info(json.dumps(payload))
+    print(json.dumps(payload), flush=True)

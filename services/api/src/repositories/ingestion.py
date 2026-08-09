@@ -289,7 +289,7 @@ class IngestionRepository:
                 SELECT COUNT(*),
                     COUNT(*) FILTER (WHERE is_imputed = FALSE),
                     COUNT(*) FILTER (WHERE is_imputed = TRUE),
-                    MAX(sensing_datetime)
+                    MAX(sensing_datetime) FILTER (WHERE is_imputed = FALSE)
                 FROM pedestrian_minute_count
                 """
             )

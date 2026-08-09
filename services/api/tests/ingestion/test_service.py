@@ -287,6 +287,7 @@ def test_status_is_read_only_serializable_and_bypasses_ingestion_lock():
     ("observed_at", "age_seconds", "stale"),
     [
         (NOW - timedelta(minutes=45), 2700, False),
+        (NOW - timedelta(minutes=45, microseconds=999_000), 2700, True),
         (NOW - timedelta(minutes=45, seconds=1), 2701, True),
         (None, None, True),
         (NOW + timedelta(minutes=5), 0, False),
