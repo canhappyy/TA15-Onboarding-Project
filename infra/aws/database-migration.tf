@@ -21,11 +21,12 @@ resource "aws_lambda_function" "database_migration" {
 
   environment {
     variables = {
-      DATABASE_HOST       = aws_db_instance.postgres.address
-      DATABASE_NAME       = aws_db_instance.postgres.db_name
-      DATABASE_PORT       = tostring(aws_db_instance.postgres.port)
-      DATABASE_SECRET_ARN = aws_db_instance.postgres.master_user_secret[0].secret_arn
-      MIGRATIONS_PATH     = "/var/task/migrations"
+      DATABASE_HOST             = aws_db_instance.postgres.address
+      DATABASE_NAME             = aws_db_instance.postgres.db_name
+      DATABASE_PORT             = tostring(aws_db_instance.postgres.port)
+      DATABASE_SECRET_ARN       = aws_db_instance.postgres.master_user_secret[0].secret_arn
+      ROUTE_DATABASE_SECRET_ARN = aws_secretsmanager_secret.route_database.arn
+      MIGRATIONS_PATH           = "/var/task/migrations"
     }
   }
 
@@ -33,6 +34,7 @@ resource "aws_lambda_function" "database_migration" {
     aws_iam_role_policy_attachment.database_migration_basic,
     aws_iam_role_policy_attachment.database_migration_vpc,
     aws_iam_role_policy.database_migration_secret,
+    aws_iam_role_policy.database_migration_route_secret,
     aws_ecr_repository_policy.lambda_pull,
     terraform_data.lambda_images,
   ]

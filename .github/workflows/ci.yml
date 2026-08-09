@@ -65,6 +65,8 @@ jobs:
             image: clearway-database-migration:test
           - function_name: rds_connectivity
             image: clearway-rds-connectivity:test
+          - function_name: route_search
+            image: clearway-route-search:test
     steps:
       - name: Check out repository
         uses: actions/checkout@v5

@@ -107,3 +107,23 @@ output "ingestion_alert_topic_arn" {
   description = "SNS topic receiving ingestion alarm notifications"
   value       = aws_sns_topic.ingestion_alerts.arn
 }
+
+output "route_search_endpoint" {
+  description = "Sensory-aware walking route search endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/routes/search"
+}
+
+output "route_search_lambda_name" {
+  description = "Name of the route-search Lambda"
+  value       = aws_lambda_function.route_search.function_name
+}
+
+output "route_database_secret_arn" {
+  description = "ARN of the read-only route-search database secret"
+  value       = aws_secretsmanager_secret.route_database.arn
+}
+
+output "route_search_repository_url" {
+  description = "ECR repository used by the route-search Lambda"
+  value       = aws_ecr_repository.route_search.repository_url
+}

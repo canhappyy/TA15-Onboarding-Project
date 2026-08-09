@@ -1,8 +1,8 @@
 # AWS infrastructure
 
 Terraform deploys ClearWay AWS resources. RDS connectivity, database migration,
-and ingestion use Python 3.13 ARM64 container images. Health and location search
-remain ZIP Lambdas.
+ingestion, and route search use Python 3.13 ARM64 container images. Health and
+location search remain ZIP Lambdas.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ terraform plan
 terraform apply
 ```
 
-The first `terraform apply` creates three private ECR repositories, then builds
+The first `terraform apply` creates four private ECR repositories, then builds
 and pushes content-addressed ARM64 images before creating the Lambdas. Existing
 immutable image tags are reused, so an interrupted apply can be retried. Source
 or dependency changes produce new tags automatically.
@@ -46,6 +46,9 @@ bash scripts/manage_lambda_images.sh verify database_migration clearway-database
 
 bash scripts/manage_lambda_images.sh build rds_connectivity clearway-rds-connectivity:dev
 bash scripts/manage_lambda_images.sh verify rds_connectivity clearway-rds-connectivity:dev
+
+bash scripts/manage_lambda_images.sh build route_search clearway-route-search:dev
+bash scripts/manage_lambda_images.sh verify route_search clearway-route-search:dev
 ```
 
 Each containerized function owns the Dockerfile beside its handler. The one
@@ -71,7 +74,8 @@ aws lambda invoke \
 cat /tmp/rds-connectivity-response.json
 ```
 
-Apply idempotent database migrations:
+Apply idempotent database migrations. This also creates the restricted route
+reader and populates its initially empty Secrets Manager secret:
 
 ```bash
 aws lambda invoke \
@@ -82,6 +86,15 @@ aws lambda invoke \
   /tmp/database-migration-response.json
 
 cat /tmp/database-migration-response.json
+```
+
+Verify the route reader secret now has a current version:
+
+```bash
+aws secretsmanager describe-secret \
+  --region ap-southeast-4 \
+  --secret-id "$(terraform output -raw route_database_secret_arn)" \
+  --query 'VersionIdsToStages'
 ```
 
 Run bootstrap ingestion after migration:
@@ -118,4 +131,16 @@ aws secretsmanager put-secret-value \
   --region ap-southeast-4 \
   --secret-id "$(terraform output -raw ors_api_key_secret_arn)" \
   --secret-string '{"api_key":"YOUR_ORS_API_KEY"}'
+```
+
+## Test route search
+
+After migrations, bootstrap ingestion, and ORS secret configuration:
+
+```bash
+curl --fail-with-body \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data '{"origin":{"latitude":-37.8179,"longitude":144.9671},"destination":{"latitude":-37.8098,"longitude":144.9652}}' \
+  "$(terraform output -raw route_search_endpoint)"
 ```

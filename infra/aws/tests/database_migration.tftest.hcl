@@ -85,6 +85,7 @@ run "database_migration_plan" {
         "DATABASE_PORT",
         "DATABASE_SECRET_ARN",
         "MIGRATIONS_PATH",
+        "ROUTE_DATABASE_SECRET_ARN",
       ])
     )
     error_message = "Migration Lambda must use complete database configuration."
@@ -93,6 +94,15 @@ run "database_migration_plan" {
   assert {
     condition     = jsondecode(aws_iam_role_policy.database_migration_secret.policy).Statement[0].Resource == aws_db_instance.postgres.master_user_secret[0].secret_arn
     error_message = "Migration Lambda secret access must be limited to the managed RDS secret."
+  }
+
+  assert {
+    condition = (
+      jsondecode(aws_iam_role_policy.database_migration_route_secret.policy).Statement[0].Resource == aws_secretsmanager_secret.route_database.arn &&
+      contains(jsondecode(aws_iam_role_policy.database_migration_route_secret.policy).Statement[0].Action, "secretsmanager:PutSecretValue") &&
+      jsondecode(aws_iam_role_policy.database_migration_route_secret.policy).Statement[1].Action == "secretsmanager:GetRandomPassword"
+    )
+    error_message = "Migration Lambda must provision only the route-reader secret."
   }
 
   assert {

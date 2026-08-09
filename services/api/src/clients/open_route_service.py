@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import socket
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -10,6 +12,7 @@ from urllib.request import Request, urlopen
 
 
 GEOCODING_URL = "https://api.heigit.org/pelias/v1/search"
+DIRECTION_URL = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson"
 REQUEST_TIMEOUT_SECONDS = 5
 
 
@@ -19,6 +22,17 @@ class OpenRouteServiceError(Exception):
 
 class OpenRouteServiceTimeout(OpenRouteServiceError):
     """Raised when ORS does not respond before the configured timeout."""
+
+
+class OpenRouteServiceNotFound(OpenRouteServiceError):
+    """Raised when ORS cannot find a route between supplied coordinates."""
+
+
+@dataclass(frozen=True)
+class RouteCandidate:
+    coordinates: tuple[tuple[float, float], ...]
+    distance_metres: float
+    duration_seconds: float
 
 
 def _request_json(url: str, params: dict[str, Any], timeout: int) -> dict[str, Any]:
@@ -41,6 +55,40 @@ def _request_json(url: str, params: dict[str, Any], timeout: int) -> dict[str, A
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise OpenRouteServiceError("OpenRouteService returned malformed JSON") from error
 
+    if not isinstance(payload, dict):
+        raise OpenRouteServiceError("OpenRouteService returned a malformed response")
+    return payload
+
+
+def _post_json(
+    url: str,
+    body: dict[str, Any],
+    headers: dict[str, str],
+    timeout: int,
+) -> dict[str, Any]:
+    request = Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (TimeoutError, socket.timeout) as error:
+        raise OpenRouteServiceTimeout("OpenRouteService request timed out") from error
+    except HTTPError as error:
+        if error.code == 404:
+            raise OpenRouteServiceNotFound(
+                "OpenRouteService could not find a route"
+            ) from error
+        raise OpenRouteServiceError("OpenRouteService returned an HTTP error") from error
+    except URLError as error:
+        if isinstance(error.reason, (TimeoutError, socket.timeout)):
+            raise OpenRouteServiceTimeout("OpenRouteService request timed out") from error
+        raise OpenRouteServiceError("OpenRouteService request failed") from error
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise OpenRouteServiceError("OpenRouteService returned malformed JSON") from error
     if not isinstance(payload, dict):
         raise OpenRouteServiceError("OpenRouteService returned a malformed response")
     return payload
@@ -126,3 +174,133 @@ class OpenRouteServiceGeocoder:
                 "longitude": longitude,
             },
         }
+
+
+class OpenRouteServiceDirections:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        request_json: Callable[
+            [str, dict[str, Any], dict[str, str], int], dict[str, Any]
+        ] = _post_json,
+    ) -> None:
+        self._api_key = api_key
+        self._request_json = request_json
+
+    def alternatives(
+        self,
+        *,
+        origin: tuple[float, float],
+        destination: tuple[float, float],
+    ) -> list[RouteCandidate]:
+        return self._request_routes(
+            {
+                "coordinates": [list(origin), list(destination)],
+                "alternative_routes": {
+                    "target_count": 3,
+                    "weight_factor": 1.4,
+                    "share_factor": 0.6,
+                },
+            }
+        )
+
+    def route(
+        self,
+        *,
+        origin: tuple[float, float],
+        destination: tuple[float, float],
+        avoid_polygons: dict[str, Any] | None = None,
+        waypoints: tuple[tuple[float, float], ...] = (),
+    ) -> RouteCandidate:
+        body: dict[str, Any] = {
+            "coordinates": [list(origin), *map(list, waypoints), list(destination)]
+        }
+        if avoid_polygons is not None:
+            body["options"] = {"avoid_polygons": avoid_polygons}
+        routes = self._request_routes(body)
+        if not routes:
+            raise OpenRouteServiceError("OpenRouteService returned no route")
+        return routes[0]
+
+    def _request_routes(self, body: dict[str, Any]) -> list[RouteCandidate]:
+        headers = {
+            "Accept": "application/geo+json",
+            "Content-Type": "application/json",
+            "Authorization": self._api_key,
+        }
+        try:
+            payload = self._request_json(
+                DIRECTION_URL,
+                body,
+                headers,
+                REQUEST_TIMEOUT_SECONDS,
+            )
+        except OpenRouteServiceError:
+            raise
+        except (TimeoutError, socket.timeout) as error:
+            raise OpenRouteServiceTimeout("OpenRouteService request timed out") from error
+        except Exception as error:
+            raise OpenRouteServiceError("OpenRouteService request failed") from error
+
+        if payload.get("type") != "FeatureCollection" or not isinstance(
+            payload.get("features"), list
+        ):
+            raise OpenRouteServiceError("OpenRouteService returned a malformed response")
+        if not payload["features"]:
+            raise OpenRouteServiceNotFound(
+                "OpenRouteService could not find a route"
+            )
+        return [self._parse_route(feature) for feature in payload["features"]]
+
+    @staticmethod
+    def _parse_route(feature: Any) -> RouteCandidate:
+        if not isinstance(feature, dict):
+            raise OpenRouteServiceError("OpenRouteService returned a malformed route")
+        geometry = feature.get("geometry")
+        properties = feature.get("properties")
+        if not isinstance(geometry, dict) or not isinstance(properties, dict):
+            raise OpenRouteServiceError("OpenRouteService returned a malformed route")
+        coordinates = geometry.get("coordinates")
+        summary = properties.get("summary")
+        if (
+            geometry.get("type") != "LineString"
+            or not isinstance(coordinates, list)
+            or len(coordinates) < 2
+            or not isinstance(summary, dict)
+        ):
+            raise OpenRouteServiceError("OpenRouteService returned a malformed route")
+        distance = summary.get("distance")
+        duration = summary.get("duration")
+        if not _positive_number(distance) or not _positive_number(duration):
+            raise OpenRouteServiceError("OpenRouteService returned a malformed route")
+
+        parsed_coordinates = []
+        for position in coordinates:
+            if (
+                not isinstance(position, list)
+                or len(position) != 2
+                or not all(_finite_number(value) for value in position)
+            ):
+                raise OpenRouteServiceError("OpenRouteService returned a malformed route")
+            longitude, latitude = position
+            if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
+                raise OpenRouteServiceError("OpenRouteService returned a malformed route")
+            parsed_coordinates.append((float(longitude), float(latitude)))
+        return RouteCandidate(
+            coordinates=tuple(parsed_coordinates),
+            distance_metres=float(distance),
+            duration_seconds=float(duration),
+        )
+
+
+def _finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
+
+
+def _positive_number(value: Any) -> bool:
+    return _finite_number(value) and value > 0

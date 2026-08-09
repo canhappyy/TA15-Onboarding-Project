@@ -11,6 +11,7 @@ from src.functions.database_migration.handler import (  # noqa: E402
     DatabaseConnectionSettings,
     Migration,
     PsycopgMigrationRunner,
+    PsycopgRouteReaderRoleDatabase,
     load_migrations,
 )
 
@@ -76,7 +77,7 @@ def test_migrations_apply_to_empty_postgres_and_are_idempotent():
     broken_migrations = [
         *migrations,
         Migration(
-            3,
+            migrations[-1].version + 1,
             "broken",
             "CREATE TABLE rollback_probe (id INTEGER); SELECT missing_column FROM rollback_probe;",
         ),
@@ -88,5 +89,73 @@ def test_migrations_apply_to_empty_postgres_and_are_idempotent():
         with connection.cursor() as cursor:
             cursor.execute("SELECT to_regclass('public.rollback_probe')")
             assert cursor.fetchone() == (None,)
-            cursor.execute("SELECT version FROM schema_migration WHERE version = 3")
+            cursor.execute(
+                "SELECT version FROM schema_migration WHERE version = %s",
+                (migrations[-1].version + 1,),
+            )
             assert cursor.fetchone() is None
+
+    PsycopgRouteReaderRoleDatabase().ensure_reader(
+        settings,
+        "clearway_route_api",
+        "reader-test-password",
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            "CREATE ROLE route_reader_unexpected NOLOGIN"
+        )
+        connection.execute(
+            "ALTER ROLE clearway_route_api CREATEDB CREATEROLE BYPASSRLS NOINHERIT"
+        )
+        connection.execute(
+            "GRANT route_reader_unexpected TO clearway_route_api"
+        )
+
+    PsycopgRouteReaderRoleDatabase().ensure_reader(
+        settings,
+        "clearway_route_api",
+        "reader-test-password",
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT rolcreatedb, rolcreaterole, rolbypassrls, rolinherit
+                FROM pg_roles WHERE rolname = 'clearway_route_api'
+                """
+            )
+            assert cursor.fetchone() == (False, False, False, True)
+            cursor.execute(
+                """
+                SELECT parent.rolname
+                FROM pg_auth_members AS membership
+                JOIN pg_roles AS parent ON parent.oid = membership.roleid
+                JOIN pg_roles AS member ON member.oid = membership.member
+                WHERE member.rolname = 'clearway_route_api'
+                ORDER BY parent.rolname
+                """
+            )
+            assert cursor.fetchall() == [("clearway_api_readonly",)]
+    reader_options = {
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+        "dbname": parsed.path.removeprefix("/"),
+        "user": "clearway_route_api",
+        "password": "reader-test-password",
+        "sslmode": "disable",
+    }
+    with psycopg.connect(**reader_options) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM sensor_location")
+            assert cursor.fetchone() == (0,)
+
+    for forbidden_statement in (
+        "INSERT INTO sensor_location (location_id) VALUES (999999)",
+        "UPDATE sensor_location SET sensor_name = 'forbidden'",
+        "DELETE FROM sensor_location",
+        "TRUNCATE sensor_location",
+        "CREATE TABLE route_reader_forbidden (id INTEGER)",
+    ):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with psycopg.connect(**reader_options) as connection:
+                connection.execute(forbidden_statement)

@@ -11,6 +11,7 @@ from src.functions.database_migration.handler import (
     DatabaseCredentials,
     Migration,
     PsycopgMigrationRunner,
+    RouteReaderSecretProvisioner,
     SecretsManagerSecretReader,
     lambda_handler,
     load_migrations,
@@ -49,6 +50,37 @@ class FakeSecretsManagerClient:
     def get_secret_value(self, SecretId):
         self.secret_id = SecretId
         return {"SecretString": json.dumps(self.payload)}
+
+
+class MissingSecretVersion(Exception):
+    def __init__(self):
+        self.response = {"Error": {"Code": "ResourceNotFoundException"}}
+
+
+class FakeRouteSecretClient:
+    def __init__(self, secret=None):
+        self.secret = secret
+        self.put_calls = []
+
+    def get_secret_value(self, SecretId):
+        if self.secret is None:
+            raise MissingSecretVersion()
+        return {"SecretString": json.dumps(self.secret)}
+
+    def get_random_password(self, **options):
+        self.random_options = options
+        return {"RandomPassword": "generated-reader-password"}
+
+    def put_secret_value(self, **options):
+        self.put_calls.append(options)
+
+
+class FakeRoleDatabase:
+    def __init__(self):
+        self.calls = []
+
+    def ensure_reader(self, settings, username, password):
+        self.calls.append((settings, username, password))
 
 
 class FakeCursor:
@@ -201,3 +233,94 @@ def test_secret_reader_requires_username_and_password():
 
     with pytest.raises(ValueError, match="missing required credentials"):
         reader.get_database_credentials("secret-arn")
+
+
+def test_route_reader_provisioner_generates_secret_after_database_role():
+    client = FakeRouteSecretClient()
+    role_database = FakeRoleDatabase()
+    provisioner = RouteReaderSecretProvisioner(
+        client=client,
+        role_database=role_database,
+    )
+    settings = DatabaseConnectionSettings(
+        "database.internal", 5432, "clearway", "admin", "admin-password"
+    )
+
+    provisioner.provision(settings, "route-secret")
+
+    assert role_database.calls == [
+        (settings, "clearway_route_api", "generated-reader-password")
+    ]
+    assert json.loads(client.put_calls[0]["SecretString"]) == {
+        "username": "clearway_route_api",
+        "password": "generated-reader-password",
+    }
+    assert client.random_options["PasswordLength"] == 32
+
+
+def test_route_reader_provisioner_reuses_existing_secret_idempotently():
+    client = FakeRouteSecretClient(
+        {"username": "clearway_route_api", "password": "existing-password"}
+    )
+    role_database = FakeRoleDatabase()
+    settings = DatabaseConnectionSettings("host", 5432, "clearway", "admin", "secret")
+
+    RouteReaderSecretProvisioner(
+        client=client,
+        role_database=role_database,
+    ).provision(settings, "route-secret")
+
+    assert role_database.calls[0][1:] == (
+        "clearway_route_api",
+        "existing-password",
+    )
+    assert client.put_calls == []
+
+
+def test_handler_provisions_route_reader_after_migrations(tmp_path):
+    (tmp_path / "0001_initial.sql").write_text("SELECT 1;")
+    reader = FakeSecretReader(DatabaseCredentials("admin", "secret"))
+    runner = FakeMigrationRunner(applied=[])
+    calls = []
+    provisioner = type(
+        "Provisioner",
+        (),
+        {"provision": lambda self, settings, secret_arn: calls.append((settings, secret_arn))},
+    )()
+    environment = {
+        "DATABASE_HOST": "database.internal",
+        "DATABASE_PORT": "5432",
+        "DATABASE_NAME": "clearway",
+        "DATABASE_SECRET_ARN": "master-secret",
+        "ROUTE_DATABASE_SECRET_ARN": "route-secret",
+        "MIGRATIONS_PATH": str(tmp_path),
+    }
+
+    with patch.dict(os.environ, environment, clear=True):
+        lambda_handler(
+            {},
+            None,
+            secret_reader=reader,
+            migration_runner=runner,
+            route_reader_provisioner=provisioner,
+        )
+
+    assert calls[0][1] == "route-secret"
+
+
+def test_route_reader_migration_grants_select_only():
+    migration = (
+        Path(__file__).parents[4]
+        / "packages"
+        / "database"
+        / "migrations"
+        / "0003_route_reader_permissions.sql"
+    ).read_text()
+
+    assert "CREATE ROLE clearway_api_readonly NOLOGIN" in migration
+    assert "GRANT SELECT ON ALL TABLES IN SCHEMA public" in migration
+    assert "ALTER DEFAULT PRIVILEGES" in migration
+    assert all(
+        forbidden not in migration
+        for forbidden in ("GRANT INSERT", "GRANT UPDATE", "GRANT DELETE", "GRANT CREATE")
+    )
