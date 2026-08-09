@@ -63,3 +63,18 @@ def test_route_bounds_adds_one_kilometre_buffer_to_every_side():
     assert bounds.west == pytest.approx(-0.00899, abs=0.00001)
     assert bounds.north == pytest.approx(0.00899, abs=0.00001)
     assert bounds.east == pytest.approx(0.10899, abs=0.00001)
+
+
+def test_route_bounds_uses_world_longitudes_when_buffer_crosses_dateline():
+    bounds = route_bounds(((179.9990, 0.0), (179.9995, 0.0)))
+
+    assert bounds.west == -180
+    assert bounds.east == 180
+
+
+def test_point_to_route_distance_follows_a_segment_across_the_dateline():
+    route = ((179.9990, 0.0), (-179.9990, 0.0))
+
+    distance = point_to_route_distance_metres((180.0, 0.0), route)
+
+    assert distance == pytest.approx(0, abs=0.01)

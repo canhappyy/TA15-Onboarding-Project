@@ -70,11 +70,15 @@ def route_bounds(route: tuple[tuple[float, float], ...]) -> BoundingBox:
         ROUTE_BOUND_BUFFER_METRES
         / (EARTH_RADIUS_METRES * max(math.cos(math.radians(maximum_latitude)), 1e-12))
     )
+    west = min(longitudes) - longitude_buffer
+    east = max(longitudes) + longitude_buffer
+    if west < -180 or east > 180:
+        west, east = -180, 180
     return BoundingBox(
         south=max(-90, min(latitudes) - latitude_buffer),
-        west=max(-180, min(longitudes) - longitude_buffer),
+        west=west,
         north=min(90, max(latitudes) + latitude_buffer),
-        east=min(180, max(longitudes) + longitude_buffer),
+        east=east,
     )
 
 
@@ -101,7 +105,7 @@ def _relative_metres(origin, position) -> tuple[float, float]:
     longitude, latitude = position
     mean_latitude = math.radians((origin_latitude + latitude) / 2)
     east = (
-        math.radians(longitude - origin_longitude)
+        math.radians((longitude - origin_longitude + 180) % 360 - 180)
         * EARTH_RADIUS_METRES
         * math.cos(mean_latitude)
     )
