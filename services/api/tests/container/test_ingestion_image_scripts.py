@@ -85,7 +85,14 @@ def test_build_maps_each_function_to_local_dockerfile_and_arm64_context(tmp_path
 
 def test_verify_runs_function_specific_smoke_commands(tmp_path):
     expected_fragments = {
-        "ingestion": ("import pandas", "src.functions.ingestion.handler", '"status"'),
+        "ingestion": (
+            "import pandas",
+            "src.functions.ingestion.handler",
+            '"status"',
+            '"freshness"',
+            '"MinuteDataFresh"',
+            '"MinuteDataAgeSeconds"',
+        ),
         "database_migration": ("load_migrations", "/var/task/migrations"),
         "rds_connectivity": ("import psycopg", "src.functions.rds_connectivity.handler"),
         "route_search": ("import psycopg", "src.functions.route_search.handler"),
@@ -116,6 +123,25 @@ def test_verify_runs_function_specific_smoke_commands(tmp_path):
         assert "--platform linux/arm64" in invocation
         assert "--entrypoint python" in invocation
         assert all(fragment in invocation for fragment in fragments)
+
+
+def test_ingestion_verify_checks_health_response_and_emf_metrics(tmp_path):
+    environment, log_path = _environment(tmp_path)
+
+    result = _run(
+        ["verify", "ingestion", "clearway-ingestion:test"], environment
+    )
+
+    assert result.returncode == 0, result.stderr
+    invocation = next(
+        line
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("run ")
+    )
+    assert 'result["freshness"]["minute"]' in invocation
+    assert 'metric["MinuteDataFresh"] == 1' in invocation
+    assert 'metric["MinuteDataAgeSeconds"] == 300' in invocation
+    assert 'metric["_aws"]["CloudWatchMetrics"][0]["Namespace"]' in invocation
 
 
 def test_refuge_verify_checks_distinct_get_and_post_handler_results(tmp_path):

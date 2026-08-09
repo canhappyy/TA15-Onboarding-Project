@@ -23,6 +23,7 @@ MELBOURNE_TZ = ZoneInfo("Australia/Melbourne")
 MINUTE_OVERLAP = timedelta(minutes=30)
 HOURLY_OVERLAP_DAYS = 1
 BOOTSTRAP_DAYS = 90
+MINUTE_FRESHNESS_THRESHOLD = timedelta(minutes=45)
 SUPPORTED_MODES = frozenset(
     {"bootstrap", "minute", "hourly", "static", "status"}
 )
@@ -67,23 +68,39 @@ class IngestionService:
         with self._connection_factory() as connection:
             repository = self._repository_factory(connection)
             status = repository.read_ingestion_status()
-        return {"mode": "status", **self._json_safe(status)}
+        freshness = self._minute_freshness(
+            status["tables"]["minute"]["latest_timestamp"]
+        )
+        return {
+            "mode": "status",
+            **self._json_safe(status),
+            "freshness": {"minute": freshness},
+        }
 
     def _run_locked(self, mode: str) -> dict[str, Any]:
         datasets: dict[str, dict[str, int]] = {}
+        minute_observed_at: datetime | str | None = None
+        includes_minute = False
         if mode == "static":
             datasets["sensors"] = self._sync_sensors()
             datasets["landmarks"] = self._sync_landmarks()
         elif mode == "minute":
-            datasets["minute"] = self._sync_minute()
+            datasets["minute"], minute_observed_at = self._sync_minute()
+            includes_minute = True
         elif mode == "hourly":
             datasets["hourly"] = self._sync_scheduled_hourly()
         else:
             datasets["sensors"] = self._sync_sensors()
             datasets["hourly"] = self._sync_bootstrap_hourly()
-            datasets["minute"] = self._sync_minute()
+            datasets["minute"], minute_observed_at = self._sync_minute()
+            includes_minute = True
             datasets["landmarks"] = self._sync_landmarks()
-        return {"mode": mode, "datasets": datasets}
+        result: dict[str, Any] = {"mode": mode, "datasets": datasets}
+        if includes_minute:
+            result["freshness"] = {
+                "minute": self._minute_freshness(minute_observed_at)
+            }
+        return result
 
     def _sync_sensors(self) -> dict[str, int]:
         started_at = self._clock()
@@ -107,7 +124,9 @@ class IngestionService:
             started_at=started_at,
         )
 
-    def _sync_minute(self) -> dict[str, int]:
+    def _sync_minute(
+        self,
+    ) -> tuple[dict[str, int], datetime | str | None]:
         checkpoint = self._read_checkpoint("minute")
         prior_watermark = checkpoint.watermark if checkpoint else None
         watermark = self._coerce_datetime(prior_watermark)
@@ -122,13 +141,14 @@ class IngestionService:
             normalized["records"],
             fallback=prior_watermark,
         )
-        return self._write_batch(
+        summary = self._write_batch(
             "minute",
             normalized,
             lambda repository, records: repository.upsert_minute_counts(records),
             watermark=next_watermark,
             started_at=started_at,
         )
+        return summary, next_watermark
 
     def _sync_scheduled_hourly(self) -> dict[str, int]:
         today = self._clock().astimezone(MELBOURNE_TZ).date()
@@ -310,6 +330,29 @@ class IngestionService:
             (record["sensing_datetime"] for record in records),
             key=lambda value: datetime.fromisoformat(value.replace("Z", "+00:00")),
         )
+
+    def _minute_freshness(
+        self, observed_at: datetime | str | None
+    ) -> dict[str, Any]:
+        threshold_seconds = int(MINUTE_FRESHNESS_THRESHOLD.total_seconds())
+        observed = self._coerce_datetime(observed_at)
+        if observed is None:
+            return {
+                "observedAt": None,
+                "ageSeconds": None,
+                "stale": True,
+                "thresholdSeconds": threshold_seconds,
+            }
+        reference_time = self._coerce_datetime(self._clock())
+        assert reference_time is not None
+        age = max(timedelta(0), reference_time - observed)
+        age_seconds = int(age.total_seconds())
+        return {
+            "observedAt": observed.isoformat(),
+            "ageSeconds": age_seconds,
+            "stale": age > MINUTE_FRESHNESS_THRESHOLD,
+            "thresholdSeconds": threshold_seconds,
+        }
 
     @staticmethod
     def _json_safe(value: Any) -> Any:

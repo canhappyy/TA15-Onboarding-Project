@@ -113,6 +113,48 @@ aws lambda invoke \
 cat /tmp/ingestion-bootstrap-response.json
 ```
 
+Successful `bootstrap` and `minute` responses include operational pedestrian
+freshness:
+
+```json
+{
+  "freshness": {
+    "minute": {
+      "observedAt": "2026-08-09T10:15:00+10:00",
+      "ageSeconds": 900,
+      "stale": false,
+      "thresholdSeconds": 2700
+    }
+  }
+}
+```
+
+The timestamp is the latest real, non-imputed observation. Missing observations
+use `null` for `observedAt` and `ageSeconds` and set `stale` to `true`. Exactly
+45 minutes remains operationally fresh; older data is stale. The route API keeps
+its stricter 30-minute user-facing warning so commuters learn about possible
+fallback use before the operational alert fires.
+
+Invoke read-only status and require a non-null observation, `ageSeconds <= 2700`,
+and `stale == false` before enabling schedules:
+
+```bash
+aws lambda invoke \
+  --region ap-southeast-4 \
+  --function-name "$(terraform output -raw ingestion_lambda_name)" \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"mode":"status"}' \
+  /tmp/ingestion-status-response.json
+
+jq '.freshness.minute' /tmp/ingestion-status-response.json
+```
+
+Successful `bootstrap` and `minute` runs emit `MinuteDataFresh` and, when an
+observation exists, `MinuteDataAgeSeconds` in the `ClearWay/Ingestion` namespace.
+Status checks, skipped concurrent runs, and failures emit no freshness metric,
+so manual checks cannot hide a missed schedule. The freshness alarm evaluates
+three 15-minute periods and alarms when two are stale or missing.
+
 Minute, hourly, and static schedules start disabled. Enable them only after the
 migration, bootstrap, checkpoint, and row-count smoke tests pass:
 
@@ -120,9 +162,27 @@ migration, bootstrap, checkpoint, and row-count smoke tests pass:
 terraform apply -var='ingestion_schedules_enabled=true'
 ```
 
-Both ingestion alarms publish to `ingestion_alert_topic_arn`. Add an email or
-operations subscription to that SNS topic after deployment; Terraform creates
-no recipient automatically.
+The ingestion alarms publish to `ingestion_alert_topic_arn`. Terraform creates
+no recipient automatically. Before enabling notifications, require at least one
+confirmed operations subscription; `PendingConfirmation` is not sufficient:
+
+```bash
+aws sns list-subscriptions-by-topic \
+  --region ap-southeast-4 \
+  --topic-arn "$(terraform output -raw ingestion_alert_topic_arn)" \
+  --query 'Subscriptions[?SubscriptionArn!=`PendingConfirmation`]'
+```
+
+Freshness alarm actions stay disabled while `ingestion_schedules_enabled=false`.
+After enabling schedules, wait for two fresh datapoints and require `OK`:
+
+```bash
+aws cloudwatch describe-alarms \
+  --region ap-southeast-4 \
+  --alarm-names "$(terraform output -raw ingestion_freshness_alarm_name)" \
+  --query 'MetricAlarms[0].StateValue' \
+  --output text
+```
 
 ## Configure location search
 

@@ -1,5 +1,6 @@
 locals {
-  ingestion_function_name = "${local.name_prefix}-ingestion"
+  ingestion_function_name    = "${local.name_prefix}-ingestion"
+  ingestion_metric_namespace = "ClearWay/Ingestion"
   ingestion_schedules = {
     minute = {
       expression  = "rate(15 minutes)"
@@ -57,6 +58,8 @@ resource "aws_lambda_function" "ingestion" {
       DATABASE_NAME       = aws_db_instance.postgres.db_name
       DATABASE_PORT       = tostring(aws_db_instance.postgres.port)
       DATABASE_SECRET_ARN = aws_db_instance.postgres.master_user_secret[0].secret_arn
+      ENVIRONMENT         = var.environment
+      METRIC_NAMESPACE    = local.ingestion_metric_namespace
     }
   }
 
@@ -150,6 +153,27 @@ resource "aws_cloudwatch_metric_alarm" "ingestion_dlq_messages" {
 
   dimensions = {
     QueueName = aws_sqs_queue.ingestion_dlq.name
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ingestion_freshness" {
+  alarm_name          = "${local.ingestion_function_name}-minute-freshness"
+  alarm_description   = "Pedestrian minute observations are stale or ingestion stopped reporting"
+  namespace           = local.ingestion_metric_namespace
+  metric_name         = "MinuteDataFresh"
+  statistic           = "Minimum"
+  period              = 900
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
+
+  comparison_operator = "LessThanThreshold"
+  threshold           = 1
+  treat_missing_data  = "breaching"
+  actions_enabled     = var.ingestion_schedules_enabled
+  alarm_actions       = [aws_sns_topic.ingestion_alerts.arn]
+
+  dimensions = {
+    Environment = var.environment
   }
 }
 

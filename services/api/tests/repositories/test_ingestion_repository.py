@@ -307,4 +307,9 @@ def test_ingestion_status_returns_sanitized_counts_freshness_and_checkpoints():
     assert "FROM pedestrian_minute_count" in statements
     assert "FROM pedestrian_hourly_count" in statements
     assert "FROM ingestion_checkpoint" in statements
+    minute_statement = cursor.statements[1][0]
+    assert (
+        "MAX(sensing_datetime) FILTER (WHERE is_imputed = FALSE)"
+        in minute_statement
+    )
     assert "error_message" not in statements

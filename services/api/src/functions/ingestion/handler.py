@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,6 +15,7 @@ from src.ingestion.service import IngestionService, SUPPORTED_MODES
 
 LOGGER = logging.getLogger("ingestion")
 LOGGER.setLevel(logging.INFO)
+DEFAULT_METRIC_NAMESPACE = "ClearWay/Ingestion"
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,8 @@ def lambda_handler(
         )
         raise RuntimeError("Ingestion failed") from None
 
+    _emit_minute_freshness(mode, result)
+
     LOGGER.info(
         json.dumps(
             {
@@ -130,3 +134,36 @@ def lambda_handler(
         )
     )
     return result
+
+
+def _emit_minute_freshness(mode: str, result: dict[str, Any]) -> None:
+    if mode not in {"minute", "bootstrap"} or result.get("status") == "skipped":
+        return
+    minute = result.get("freshness", {}).get("minute")
+    if not isinstance(minute, dict) or not isinstance(minute.get("stale"), bool):
+        return
+
+    metrics = [{"Name": "MinuteDataFresh", "Unit": "Count"}]
+    payload: dict[str, Any] = {
+        "_aws": {
+            "Timestamp": int(time.time() * 1000),
+            "CloudWatchMetrics": [
+                {
+                    "Namespace": os.environ.get(
+                        "METRIC_NAMESPACE", DEFAULT_METRIC_NAMESPACE
+                    ),
+                    "Dimensions": [["Environment"]],
+                    "Metrics": metrics,
+                }
+            ],
+        },
+        "event": "pedestrian_minute_freshness",
+        "mode": mode,
+        "Environment": os.environ.get("ENVIRONMENT", "unknown"),
+        "MinuteDataFresh": 0 if minute["stale"] else 1,
+    }
+    age_seconds = minute.get("ageSeconds")
+    if isinstance(age_seconds, int) and age_seconds >= 0:
+        metrics.append({"Name": "MinuteDataAgeSeconds", "Unit": "Seconds"})
+        payload["MinuteDataAgeSeconds"] = age_seconds
+    print(json.dumps(payload), flush=True)

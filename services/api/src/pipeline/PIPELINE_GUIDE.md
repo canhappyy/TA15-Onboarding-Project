@@ -129,6 +129,18 @@ your local database is fully verified.
 
 ---
 
+## Deployed AWS ingestion
+
+The production ingestion path uses `OpenDataSyncClient` from the private ARM64
+ingestion Lambda. EventBridge Scheduler invokes minute synchronization every
+15 minutes, hourly synchronization daily, and static metadata synchronization
+weekly. The minute handler reports source-observation freshness and emits
+CloudWatch metrics; see `infra/aws/README.md` for the 45-minute operational
+threshold, alarm behavior, and deployment checks.
+
+The scripts described earlier in this guide remain useful for local CSV
+characterization. They are not the deployed recurring ingestion entrypoint.
+
 ## Open decisions for the team (not yet resolved)
 
 - **Refuge scope**: currently Park/Garden/Reserve only. Library and
@@ -138,13 +150,3 @@ your local database is fully verified.
   matching the locked user story wording. `docs/api/api-contract.md`
   currently documents a three-tier LOW/MEDIUM/HIGH — this conflict needs
   resolving with whoever owns that doc.
-- **Real-time ingestion**: the pipeline currently reads static downloaded
-  CSVs. Turning this into an actually-live feed needs two things nobody's
-  built yet: a client for Melbourne's live Open Data API (stub exists at
-  `services/api/src/clients/open_data_client.py`), and a scheduler
-  (EventBridge, roughly every 15 minutes) to re-run ingestion on a timer.
-- **Lambda packaging**: the pipeline depends on `pandas` and
-  `psycopg2-binary`, which the repo's current Terraform Lambda setup
-  can't package (no layer, no requirements.txt bundling). Needs an infra
-  decision — Lambda Layer vs. a scheduled Fargate task — before this can
-  actually be deployed to AWS.
