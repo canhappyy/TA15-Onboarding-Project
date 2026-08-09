@@ -109,6 +109,30 @@ resource "aws_iam_role_policy" "database_migration_secret" {
   })
 }
 
+resource "aws_iam_role_policy" "database_migration_route_secret" {
+  name = "${local.name_prefix}-database-migration-route-secret"
+  role = aws_iam_role.database_migration_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+        ]
+        Resource = aws_secretsmanager_secret.route_database.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetRandomPassword"
+        Resource = "*"
+      },
+    ]
+  })
+}
+
 resource "aws_iam_role" "ingestion_execution" {
   name = "${local.name_prefix}-ingestion-role"
 
