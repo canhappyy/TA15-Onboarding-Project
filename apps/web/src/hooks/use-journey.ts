@@ -24,6 +24,7 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
   const [origin, setOriginState] = useState<LocationSuggestion | null>(null)
   const [destination, setDestinationState] = useState<LocationSuggestion | null>(null)
   const [routes, setRoutes] = useState<Route[]>([])
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<RouteFilter>("all")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +49,7 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
   const resetSearch = () => {
     abortActiveRequest()
     setRoutes([])
+    setSelectedRouteId(null)
     setError(null)
     setHasSearched(false)
     setActiveFilter("all")
@@ -73,6 +75,7 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
     controllerRef.current = controller
 
     setRoutes([])
+    setSelectedRouteId(null)
     setError(null)
     setHasSearched(false)
     setLoading(true)
@@ -89,11 +92,17 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return
 
       setRoutes(foundRoutes)
+      setSelectedRouteId(
+        foundRoutes.find((route) => route.recommended)?.id
+          ?? foundRoutes[0]?.id
+          ?? null
+      )
       setHasSearched(true)
     } catch (cause) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return
 
       setRoutes([])
+      setSelectedRouteId(null)
       setError(
         cause instanceof RouteSearchApiError ? cause.message : unavailableMessage
       )
@@ -109,14 +118,37 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
   const retrySearch = () => searchJourney()
 
   const toggleFilter = (filter: SensoryIndicator) => {
+    setActiveFilter((currentFilter) => {
+      const nextFilter = currentFilter === filter ? "all" : filter
+      const visibleRoutes = routes.filter(
+        (route) => nextFilter === "all" || route.indicator === nextFilter
+      )
+      setSelectedRouteId((currentRouteId) =>
+        visibleRoutes.some((route) => route.id === currentRouteId)
+          ? currentRouteId
+          : visibleRoutes[0]?.id ?? null
+      )
+      return nextFilter
+    })
+  }
+
+  const selectRoute = (routeId: string) => {
+    const route = routes.find((candidate) => candidate.id === routeId)
+    if (!route) return
+
+    setSelectedRouteId(routeId)
     setActiveFilter((currentFilter) =>
-      currentFilter === filter ? "all" : filter
+      currentFilter === "all" || currentFilter === route.indicator
+        ? currentFilter
+        : "all"
     )
   }
 
   const filteredRoutes = routes.filter(
     (route) => activeFilter === "all" || route.indicator === activeFilter
   )
+  const selectedRoute =
+    routes.find((route) => route.id === selectedRouteId) ?? null
 
   return {
     origin,
@@ -124,6 +156,8 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
     destination,
     setDestination,
     routes,
+    selectedRoute,
+    selectRoute,
     activeFilter,
     loading,
     error,

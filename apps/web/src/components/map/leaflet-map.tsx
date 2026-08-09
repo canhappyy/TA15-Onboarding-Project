@@ -1,29 +1,67 @@
 "use client"
 
-import { useEffect } from "react"
-import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet"
-import type { Coordinates, Refuge } from "@clearway/shared"
+import { useEffect, useMemo } from "react"
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet"
+import type { Coordinates, Refuge, Route } from "@clearway/shared"
 
 const DEFAULT_POSITION: [number, number] = [-37.8136, 144.9631]
 
 // Helper component to update the map view dynamically when center changes
-function ChangeMapView({ center }: { center: [number, number] }) {
+function ChangeMapView({
+  center,
+  journeyPositions,
+}: {
+  center: [number, number]
+  journeyPositions: [number, number][]
+}) {
   const map = useMap()
   useEffect(() => {
+    if (journeyPositions.length >= 2) {
+      map.fitBounds(journeyPositions, { padding: [24, 24] })
+      return
+    }
     map.setView(center, map.getZoom())
-  }, [center, map])
+  }, [center, journeyPositions, map])
   return null
 }
 
+const EMPTY_ROUTES: Route[] = []
+
 interface LeafletMapProps {
   origin?: Coordinates | null
+  destination?: Coordinates | null
   refuges?: Refuge[]
+  routes?: Route[]
+  selectedRouteId?: string | null
+  onRouteSelect?: (routeId: string) => void
 }
 
-export function LeafletMap({ origin, refuges = [] }: LeafletMapProps) {
-  const center: [number, number] = origin
-    ? [origin.latitude, origin.longitude]
-    : DEFAULT_POSITION
+export function LeafletMap({
+  origin,
+  destination,
+  refuges = [],
+  routes = EMPTY_ROUTES,
+  selectedRouteId,
+  onRouteSelect,
+}: LeafletMapProps) {
+  const center = useMemo<[number, number]>(
+    () => origin
+      ? [origin.latitude, origin.longitude]
+      : DEFAULT_POSITION,
+    [origin]
+  )
+  const journeyPositions = useMemo<[number, number][]>(
+    () => routes.flatMap((route) =>
+      route.geometry.coordinates.map(
+        ([longitude, latitude]): [number, number] => [latitude, longitude]
+      )
+    ),
+    [routes]
+  )
+  const orderedRoutes = [
+    ...routes.filter((route) => route.id !== selectedRouteId),
+    ...routes.filter((route) => route.id === selectedRouteId),
+  ]
 
   return (
     <MapContainer
@@ -32,11 +70,46 @@ export function LeafletMap({ origin, refuges = [] }: LeafletMapProps) {
       scrollWheelZoom
       className="h-full w-full"
     >
-      <ChangeMapView center={center} />
+      <ChangeMapView center={center} journeyPositions={journeyPositions} />
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {orderedRoutes.map((route) => {
+        const selected = route.id === selectedRouteId
+        return (
+          <Polyline
+            key={route.id}
+            positions={route.geometry.coordinates.map(
+              ([longitude, latitude]) => [latitude, longitude]
+            )}
+            pathOptions={{
+              color: selected ? "#475569" : "#94a3b8",
+              opacity: selected ? 0.95 : 0.6,
+              weight: selected ? 6 : 4,
+            }}
+            eventHandlers={{ click: () => onRouteSelect?.(route.id) }}
+          />
+        )
+      })}
+      {routes.length > 0 && origin ? (
+        <CircleMarker
+          center={[origin.latitude, origin.longitude]}
+          radius={7}
+          pathOptions={{ color: "#0f766e", fillColor: "#14b8a6", fillOpacity: 1 }}
+        >
+          <Popup>Origin</Popup>
+        </CircleMarker>
+      ) : null}
+      {routes.length > 0 && destination ? (
+        <CircleMarker
+          center={[destination.latitude, destination.longitude]}
+          radius={7}
+          pathOptions={{ color: "#b91c1c", fillColor: "#ef4444", fillOpacity: 1 }}
+        >
+          <Popup>Destination</Popup>
+        </CircleMarker>
+      ) : null}
       {refuges.map((refuge) => (
         <CircleMarker
           key={refuge.id}

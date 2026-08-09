@@ -54,6 +54,7 @@ const highRoute: Route = {
   id: "high-route",
   indicator: "HIGH",
   score: 0.52,
+  recommended: false,
 }
 
 function deferred<T>() {
@@ -90,6 +91,38 @@ describe("useJourney", () => {
     expect(result.current.hasSearched).toBe(true)
     expect(result.current.routes).toEqual([highRoute, lowRoute])
     expect(result.current.filteredRoutes).toEqual([highRoute, lowRoute])
+  })
+
+  it("selects the recommended route by default and allows another route", async () => {
+    const search: SearchRoutes = async () => [highRoute, lowRoute]
+    const { result } = renderHook(() => useJourney(search))
+
+    selectLocations(result)
+    await act(async () => {
+      await result.current.searchJourney()
+    })
+
+    expect(result.current.selectedRoute).toEqual(lowRoute)
+
+    act(() => {
+      result.current.selectRoute("high-route")
+    })
+
+    expect(result.current.selectedRoute).toEqual(highRoute)
+  })
+
+  it("falls back to the first route when none is recommended", async () => {
+    const firstRoute = { ...highRoute, recommended: false }
+    const secondRoute = { ...lowRoute, recommended: false }
+    const search: SearchRoutes = async () => [firstRoute, secondRoute]
+    const { result } = renderHook(() => useJourney(search))
+
+    selectLocations(result)
+    await act(async () => {
+      await result.current.searchJourney()
+    })
+
+    expect(result.current.selectedRoute).toEqual(firstRoute)
   })
 
   it("disables search while a request is loading", async () => {
@@ -129,17 +162,63 @@ describe("useJourney", () => {
       result.current.toggleFilter("LOW")
     })
     expect(result.current.filteredRoutes).toEqual([lowRoute])
+    expect(result.current.selectedRoute).toEqual(lowRoute)
 
     act(() => {
       result.current.toggleFilter("HIGH")
     })
     expect(result.current.filteredRoutes).toEqual([highRoute, highRoute])
+    expect(result.current.selectedRoute).toEqual(highRoute)
 
     act(() => {
       result.current.toggleFilter("HIGH")
     })
     expect(result.current.activeFilter).toBe("all")
     expect(result.current.filteredRoutes).toEqual([highRoute, lowRoute, highRoute])
+    expect(result.current.selectedRoute).toEqual(highRoute)
+  })
+
+  it("clears selection when an active filter has no matching route", async () => {
+    const search: SearchRoutes = async () => [lowRoute]
+    const { result } = renderHook(() => useJourney(search))
+
+    selectLocations(result)
+    await act(async () => {
+      await result.current.searchJourney()
+    })
+
+    act(() => {
+      result.current.toggleFilter("HIGH")
+    })
+
+    expect(result.current.selectedRoute).toBeNull()
+
+    act(() => {
+      result.current.toggleFilter("HIGH")
+    })
+
+    expect(result.current.selectedRoute).toEqual(lowRoute)
+  })
+
+  it("clears a filter when map selection targets a hidden route", async () => {
+    const search: SearchRoutes = async () => [lowRoute, highRoute]
+    const { result } = renderHook(() => useJourney(search))
+
+    selectLocations(result)
+    await act(async () => {
+      await result.current.searchJourney()
+    })
+
+    act(() => {
+      result.current.toggleFilter("LOW")
+    })
+    act(() => {
+      result.current.selectRoute("high-route")
+    })
+
+    expect(result.current.activeFilter).toBe("all")
+    expect(result.current.filteredRoutes).toEqual([lowRoute, highRoute])
+    expect(result.current.selectedRoute).toEqual(highRoute)
   })
 
   it("exposes route API error messages after a completed failure", async () => {
@@ -154,6 +233,7 @@ describe("useJourney", () => {
     })
 
     expect(result.current.routes).toEqual([])
+    expect(result.current.selectedRoute).toBeNull()
     expect(result.current.error).toBe("Outside service area.")
     expect(result.current.hasSearched).toBe(true)
     expect(result.current.loading).toBe(false)
