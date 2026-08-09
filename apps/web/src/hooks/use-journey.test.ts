@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import type { LocationSuggestion, Route } from "@clearway/shared"
+import type { LocationSuggestion, Route, RouteSearchRequest } from "@clearway/shared"
 import { RouteSearchApiError } from "@/lib/route-search-api"
 import { type SearchRoutes, useJourney } from "@/hooks/use-journey"
 
@@ -21,6 +21,12 @@ const destination: LocationSuggestion = {
   id: "destination.1",
   label: "State Library",
   coordinates: { latitude: -37.8098, longitude: 144.9652 },
+}
+
+const updatedDestination: LocationSuggestion = {
+  id: "destination.2",
+  label: "Fitzroy Gardens",
+  coordinates: { latitude: -37.8138, longitude: 144.9812 },
 }
 
 const lowRoute: Route = {
@@ -170,36 +176,50 @@ describe("useJourney", () => {
 
   it("retries using the current location coordinates", async () => {
     let attempt = 0
+    const requests: RouteSearchRequest[] = []
     const search: SearchRoutes = async (request) => {
+      requests.push(request)
       attempt += 1
       if (attempt === 1) {
         throw new RouteSearchApiError("UPSTREAM_TIMEOUT", "Timed out.")
-      }
-      if (request.origin.latitude !== updatedOrigin.coordinates.latitude) {
-        throw new Error("stale origin")
       }
       return [lowRoute]
     }
     const { result } = renderHook(() => useJourney(search))
 
-    selectLocations(result, updatedOrigin)
+    selectLocations(result)
     await act(async () => {
       await result.current.searchJourney()
     })
     expect(result.current.error).toBe("Timed out.")
 
+    act(() => {
+      result.current.setOrigin(updatedOrigin)
+    })
     await act(async () => {
       await result.current.retrySearch()
     })
 
+    expect(requests).toEqual([
+      { origin: origin.coordinates, destination: destination.coordinates },
+      {
+        origin: updatedOrigin.coordinates,
+        destination: destination.coordinates,
+      },
+    ])
     expect(result.current.error).toBeNull()
     expect(result.current.routes).toEqual([lowRoute])
     expect(result.current.hasSearched).toBe(true)
   })
 
-  it("clears completed results and errors when a location changes", async () => {
-    const search: SearchRoutes = async () => {
-      throw new RouteSearchApiError("UPSTREAM_ERROR", "Route service failed.")
+  it("resets completed routes and aborts active work when a location changes", async () => {
+    const activeRequest = deferred<Route[]>()
+    const signals: AbortSignal[] = []
+    let searchIndex = 0
+    const search: SearchRoutes = (_request, options) => {
+      if (options?.signal) signals.push(options.signal)
+      if (searchIndex++ === 0) return Promise.resolve([highRoute, lowRoute])
+      return activeRequest.promise
     }
     const { result } = renderHook(() => useJourney(search))
 
@@ -210,6 +230,24 @@ describe("useJourney", () => {
     act(() => {
       result.current.toggleFilter("HIGH")
       result.current.setOrigin(updatedOrigin)
+    })
+
+    expect(result.current.routes).toEqual([])
+    expect(result.current.error).toBeNull()
+    expect(result.current.hasSearched).toBe(false)
+    expect(result.current.activeFilter).toBe("all")
+
+    act(() => {
+      void result.current.searchJourney()
+      result.current.setDestination(updatedDestination)
+    })
+
+    expect(signals[1]?.aborted).toBe(true)
+    expect(result.current.loading).toBe(false)
+
+    await act(async () => {
+      activeRequest.resolve([highRoute])
+      await activeRequest.promise
     })
 
     expect(result.current.routes).toEqual([])
