@@ -206,7 +206,7 @@ Response uses the common envelope and the refuge shape documented under
         "coordinates": {"latitude": -37.8098, "longitude": 144.9652},
         "walkingDistanceKm": 0.45,
         "metadata": {"source": "City of Melbourne Open Data"},
-        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098,144.9652"
+        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098%2C144.9652&travelmode=walking"
       }
     ]
   }
@@ -252,7 +252,7 @@ ORS service failure returns `502`.
         "coordinates": {"latitude": -37.8098, "longitude": 144.9652},
         "walkingDistanceKm": 0.45,
         "metadata": {"source": "City of Melbourne Open Data"},
-        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098,144.9652"
+        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098%2C144.9652&travelmode=walking"
       }
     ]
   }

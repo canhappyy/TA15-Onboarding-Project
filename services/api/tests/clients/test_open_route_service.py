@@ -346,6 +346,7 @@ def test_matrix_sends_one_request_for_many_sources_and_destinations():
         {"distances": [[218.4]]},
         {"distances": [[218.4, "bad", 904.7]]},
         {"distances": [[218.4, float("inf"), 904.7]]},
+        {"distances": [[218.4, 10**400, 904.7]]},
     ],
 )
 def test_matrix_rejects_malformed_distance_envelopes(payload):

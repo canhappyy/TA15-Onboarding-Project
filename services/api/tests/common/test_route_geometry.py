@@ -38,15 +38,26 @@ def test_validate_route_geometry_rejects_malformed_linestrings(geometry):
         validate_route_geometry(geometry)
 
 
-def test_sample_route_points_evenly_limits_points_and_keeps_endpoints():
-    route = tuple((float(index), -37.8) for index in range(99))
+def test_sample_route_points_interpolates_fifty_sources_along_a_sparse_segment():
+    route = ((0.0, 0.0), (49.0, 0.0))
 
     points = sample_route_points(route)
 
     assert len(points) == 50
-    assert points[0] == (0.0, -37.8)
-    assert points[-1] == (98.0, -37.8)
-    assert points == tuple((float(index), -37.8) for index in range(0, 99, 2))
+    assert [point[0] for point in points] == pytest.approx(range(50))
+    assert all(point[1] == 0.0 for point in points)
+
+
+def test_sample_route_points_uses_distance_not_vertex_density():
+    route = ((0.0, 0.0), (0.01, 0.0), (0.02, 0.0), (10.0, 0.0))
+
+    points = sample_route_points(route)
+
+    assert len(points) == 50
+    assert points[0] == (0.0, 0.0)
+    assert points[1] == pytest.approx((0.2040816327, 0.0))
+    assert points[24] == pytest.approx((4.8979591837, 0.0))
+    assert points[-1] == (10.0, 0.0)
 
 
 def test_point_to_route_distance_uses_the_nearest_line_segment():
@@ -73,9 +84,24 @@ def test_route_bounds_uses_world_longitudes_when_buffer_crosses_dateline():
     assert bounds.east == 180
 
 
+def test_route_bounds_uses_world_longitudes_for_a_dateline_crossing_route():
+    bounds = route_bounds(((170.0, 0.0), (-170.0, 0.0)))
+
+    assert bounds.west == -180
+    assert bounds.east == 180
+
+
 def test_point_to_route_distance_follows_a_segment_across_the_dateline():
     route = ((179.9990, 0.0), (-179.9990, 0.0))
 
     distance = point_to_route_distance_metres((180.0, 0.0), route)
 
     assert distance == pytest.approx(0, abs=0.01)
+
+
+def test_point_to_route_distance_does_not_cross_the_antipodal_non_corridor():
+    route = ((179.0, 0.0), (-179.0, 0.0))
+
+    distance = point_to_route_distance_metres((0.0, 0.0), route)
+
+    assert distance > 19_000_000
