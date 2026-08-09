@@ -5,27 +5,27 @@ import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "
 import type { Coordinates, Refuge, Route } from "@clearway/shared"
 
 const DEFAULT_POSITION: [number, number] = [-37.8136, 144.9631]
+const EMPTY_REFUGES: Refuge[] = []
+const EMPTY_ROUTES: Route[] = []
 
 // Helper component to update the map view dynamically when center changes
 function ChangeMapView({
   center,
-  journeyPositions,
+  journeyBoundsPositions,
 }: {
   center: [number, number]
-  journeyPositions: [number, number][]
+  journeyBoundsPositions: [number, number][]
 }) {
   const map = useMap()
   useEffect(() => {
-    if (journeyPositions.length >= 2) {
-      map.fitBounds(journeyPositions, { padding: [24, 24] })
+    if (journeyBoundsPositions.length >= 2) {
+      map.fitBounds(journeyBoundsPositions, { padding: [24, 24] })
       return
     }
     map.setView(center, map.getZoom())
-  }, [center, journeyPositions, map])
+  }, [center, journeyBoundsPositions, map])
   return null
 }
-
-const EMPTY_ROUTES: Route[] = []
 
 function formatRefugeCategory(category: Refuge["category"]) {
   return category[0] + category.slice(1).toLowerCase()
@@ -43,7 +43,7 @@ interface LeafletMapProps {
 export function LeafletMap({
   origin,
   destination,
-  refuges = [],
+  refuges = EMPTY_REFUGES,
   routes = EMPTY_ROUTES,
   selectedRouteId,
   onRouteSelect,
@@ -54,13 +54,27 @@ export function LeafletMap({
       : DEFAULT_POSITION,
     [origin]
   )
-  const journeyPositions = useMemo<[number, number][]>(
-    () => routes.flatMap((route) =>
-      route.geometry.coordinates.map(
-        ([longitude, latitude]): [number, number] => [latitude, longitude]
+  const journeyBoundsPositions = useMemo<[number, number][]>(
+    () => {
+      const routePositions = routes.flatMap((route) =>
+        route.geometry.coordinates.map(
+          ([longitude, latitude]): [number, number] => [latitude, longitude]
+        )
       )
-    ),
-    [routes]
+
+      return routePositions.length >= 2
+        ? [
+            ...routePositions,
+            ...refuges.map(
+              (refuge): [number, number] => [
+                refuge.coordinates.latitude,
+                refuge.coordinates.longitude,
+              ]
+            ),
+          ]
+        : routePositions
+    },
+    [refuges, routes]
   )
   const orderedRoutes = [
     ...routes.filter((route) => route.id !== selectedRouteId),
@@ -74,7 +88,10 @@ export function LeafletMap({
       scrollWheelZoom
       className="h-full w-full"
     >
-      <ChangeMapView center={center} journeyPositions={journeyPositions} />
+      <ChangeMapView
+        center={center}
+        journeyBoundsPositions={journeyBoundsPositions}
+      />
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

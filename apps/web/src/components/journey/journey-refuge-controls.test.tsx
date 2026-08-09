@@ -44,6 +44,7 @@ describe("JourneyRefugeControls", () => {
   it("labels its region and shows all refuge categories", () => {
     renderControls()
 
+    expect(screen.getByRole("heading", { name: "Quiet spaces along this route" })).toBeVisible()
     expect(screen.getByRole("region", { name: "Quiet spaces along this route" })).toBeInTheDocument()
     for (const label of ["All", "Park", "Garden", "Library", "Museum"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument()

@@ -4,6 +4,8 @@ import { RefugeCategoryFilter } from "@/components/refuges/refuge-category-filte
 import { Button } from "@/components/ui/button"
 import type { RefugeFilter } from "@/lib/refuge-filter"
 
+const HEADING_ID = "journey-refuge-controls-heading"
+
 type JourneyRefugeControlsProps = {
   refuges: Refuge[]
   filteredRefuges: Refuge[]
@@ -31,9 +33,10 @@ export function JourneyRefugeControls({
   return (
     <section
       role="region"
-      aria-label="Quiet spaces along this route"
+      aria-labelledby={HEADING_ID}
       className="flex flex-col gap-2"
     >
+      <h2 id={HEADING_ID}>Quiet spaces along this route</h2>
       <RefugeCategoryFilter
         activeFilter={activeFilter}
         onToggleFilter={onToggleFilter}
