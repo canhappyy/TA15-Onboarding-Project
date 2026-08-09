@@ -133,9 +133,15 @@ export function useJourney(search: SearchRoutes = searchRoutes) {
   }
 
   const selectRoute = (routeId: string) => {
-    if (routes.some((route) => route.id === routeId)) {
-      setSelectedRouteId(routeId)
-    }
+    const route = routes.find((candidate) => candidate.id === routeId)
+    if (!route) return
+
+    setSelectedRouteId(routeId)
+    setActiveFilter((currentFilter) =>
+      currentFilter === "all" || currentFilter === route.indicator
+        ? currentFilter
+        : "all"
+    )
   }
 
   const filteredRoutes = routes.filter(

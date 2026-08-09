@@ -200,6 +200,27 @@ describe("useJourney", () => {
     expect(result.current.selectedRoute).toEqual(lowRoute)
   })
 
+  it("clears a filter when map selection targets a hidden route", async () => {
+    const search: SearchRoutes = async () => [lowRoute, highRoute]
+    const { result } = renderHook(() => useJourney(search))
+
+    selectLocations(result)
+    await act(async () => {
+      await result.current.searchJourney()
+    })
+
+    act(() => {
+      result.current.toggleFilter("LOW")
+    })
+    act(() => {
+      result.current.selectRoute("high-route")
+    })
+
+    expect(result.current.activeFilter).toBe("all")
+    expect(result.current.filteredRoutes).toEqual([lowRoute, highRoute])
+    expect(result.current.selectedRoute).toEqual(highRoute)
+  })
+
   it("exposes route API error messages after a completed failure", async () => {
     const search: SearchRoutes = async () => {
       throw new RouteSearchApiError("OUTSIDE_SERVICE_AREA", "Outside service area.")
