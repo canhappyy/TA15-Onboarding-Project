@@ -30,6 +30,7 @@ def test_validate_route_geometry_returns_longitude_latitude_positions():
         {"type": "LineString", "coordinates": [[144.96, -37.81, 1], [144.97, -37.80]]},
         {"type": "LineString", "coordinates": [[181, -37.81], [144.97, -37.80]]},
         {"type": "LineString", "coordinates": [[144.96, float("nan")], [144.97, -37.80]]},
+        {"type": "LineString", "coordinates": [[10**400, -37.81], [144.97, -37.80]]},
     ],
 )
 def test_validate_route_geometry_rejects_malformed_linestrings(geometry):

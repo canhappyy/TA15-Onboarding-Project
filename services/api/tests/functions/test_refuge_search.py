@@ -147,8 +147,10 @@ def test_handler_decodes_base64_post_journey_body():
         {**JOURNEY, "categories": ["PARK", "PARK"]},
         {**JOURNEY, "categories": ["park"]},
         {**JOURNEY, "origin": {"latitude": "-37.8136", "longitude": 144.9631}},
+        {**JOURNEY, "origin": {"latitude": -37.8136, "longitude": 10**400}},
         {**JOURNEY, "route": {"type": "LineString", "coordinates": [[144.9631, -37.8136]]}},
         {**JOURNEY, "route": {"type": "LineString", "coordinates": [[144.9631, -37.8136], [math.nan, -37.8136]]}},
+        {**JOURNEY, "route": {"type": "LineString", "coordinates": [[144.9631, -37.8136], [10**400, -37.8136]]}},
     ],
 )
 def test_handler_rejects_invalid_post_journey_payload_without_calling_service(payload):
