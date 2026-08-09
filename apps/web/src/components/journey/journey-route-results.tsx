@@ -1,6 +1,7 @@
-import type { Route } from "@clearway/shared"
+import type { Coordinates, Route } from "@clearway/shared"
 
 import { JourneyFilter } from "@/components/journey/journey-filter"
+import { Map } from "@/components/map/map"
 import { RouteCard } from "@/components/journey/route-card"
 import type { RouteFilter } from "@/hooks/use-journey"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,8 @@ type JourneyRouteResultsProps = {
   routes: Route[]
   filteredRoutes: Route[]
   selectedRoute: Route | null
+  origin: Coordinates | null
+  destination: Coordinates | null
   activeFilter: RouteFilter
   onToggleFilter: (filter: "LOW" | "HIGH") => void
   onRetry: () => void
@@ -25,6 +28,8 @@ export function JourneyRouteResults({
   routes,
   filteredRoutes,
   selectedRoute,
+  origin,
+  destination,
   activeFilter,
   onToggleFilter,
   onRetry,
@@ -67,6 +72,19 @@ export function JourneyRouteResults({
 
   return (
     <>
+      <div
+        role="region"
+        aria-label="Journey routes map"
+        className="relative h-72 w-full overflow-hidden rounded-3xl border border-slate-100/80 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.02)] dark:border-slate-800/80 dark:bg-slate-900"
+      >
+        <Map
+          origin={origin}
+          destination={destination}
+          routes={routes}
+          selectedRouteId={selectedRoute?.id}
+          onRouteSelect={onSelectRoute}
+        />
+      </div>
       <JourneyFilter activeFilter={activeFilter} onToggleFilter={onToggleFilter} />
       <section className="flex flex-col gap-3">
         <div

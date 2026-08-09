@@ -27,6 +27,8 @@ export default function JourneyPage() {
         routes={journey.routes}
         filteredRoutes={journey.filteredRoutes}
         selectedRoute={journey.selectedRoute}
+        origin={journey.origin?.coordinates ?? null}
+        destination={journey.destination?.coordinates ?? null}
         activeFilter={journey.activeFilter}
         onToggleFilter={journey.toggleFilter}
         onRetry={journey.retrySearch}

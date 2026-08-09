@@ -39,7 +39,7 @@ const lowRoute: Route = {
   id: "low-route",
   durationMinutes: 12,
   walkingDistanceKm: 0.8,
-  score: 0.91,
+  score: 15,
   indicator: "LOW",
   geometry: {
     type: "LineString",
@@ -61,7 +61,7 @@ const highRoute: Route = {
   durationMinutes: 9,
   walkingDistanceKm: 0.7,
   indicator: "HIGH",
-  score: 0.52,
+  score: 70,
   recommended: false,
   warning: "Crowds may be intense.",
   explanation: "Higher sensory load.",
@@ -143,6 +143,38 @@ describe("JourneyPage", () => {
     for (const routeArticle of screen.getAllByRole("article")) {
       expect(within(routeArticle).queryByRole("link")).not.toBeInTheDocument()
     }
+  })
+
+  it("shows the journey map and lets the user switch selected route details", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute, highRoute])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+
+    expect(
+      await screen.findByRole("region", { name: "Journey routes map" })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", {
+        name: "Selected 12 minute LOW sensory route",
+      })
+    ).toHaveAttribute("aria-pressed", "true")
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Select 9 minute HIGH sensory route",
+      })
+    )
+
+    expect(
+      screen.getByRole("button", {
+        name: "Selected 9 minute HIGH sensory route",
+      })
+    ).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByText("Sensory score 70")).toBeInTheDocument()
+    expect(screen.getByText("Higher sensory load.")).toBeInTheDocument()
   })
 
   it("shows an empty route message after a successful search with no routes", async () => {
