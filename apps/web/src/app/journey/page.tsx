@@ -24,7 +24,8 @@ export default function JourneyPage() {
         hasSearched={journey.hasSearched}
         loading={journey.loading}
         error={journey.error}
-        routes={journey.filteredRoutes}
+        routes={journey.routes}
+        filteredRoutes={journey.filteredRoutes}
         activeFilter={journey.activeFilter}
         onToggleFilter={journey.toggleFilter}
         onRetry={journey.retrySearch}

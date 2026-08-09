@@ -10,6 +10,7 @@ type JourneyRouteResultsProps = {
   loading: boolean
   error: string | null
   routes: Route[]
+  filteredRoutes: Route[]
   activeFilter: RouteFilter
   onToggleFilter: (filter: "LOW" | "HIGH") => void
   onRetry: () => void
@@ -20,6 +21,7 @@ export function JourneyRouteResults({
   loading,
   error,
   routes,
+  filteredRoutes,
   activeFilter,
   onToggleFilter,
   onRetry,
@@ -67,10 +69,10 @@ export function JourneyRouteResults({
           role="status"
           className="text-[10px] font-bold uppercase tracking-wider text-slate-450 dark:text-slate-500"
         >
-          {routes.length} route{routes.length !== 1 && "s"} found
+          {filteredRoutes.length} route{filteredRoutes.length !== 1 && "s"} found
         </div>
         <div className="flex flex-col gap-3">
-          {routes.map((route) => (
+          {filteredRoutes.map((route) => (
             <RouteCard key={route.id} route={route} />
           ))}
         </div>

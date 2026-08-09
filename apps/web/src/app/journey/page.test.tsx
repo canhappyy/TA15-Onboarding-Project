@@ -172,6 +172,23 @@ describe("JourneyPage", () => {
     expect(screen.getByText("Higher sensory load.")).toBeInTheDocument()
   })
 
+  it("keeps filters available when the active filter has zero matches", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByText("Lower sensory load.")
+
+    await user.click(screen.getByRole("button", { name: "High" }))
+    expect(screen.getByRole("button", { name: "High" })).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("0 routes found")
+
+    await user.click(screen.getByRole("button", { name: "High" }))
+    expect(screen.getByText("Lower sensory load.")).toBeInTheDocument()
+  })
+
   it("shows an inline route error and retries the search", async () => {
     mockedSearchRoutes
       .mockRejectedValueOnce(
