@@ -26,9 +26,11 @@ export default function JourneyPage() {
         error={journey.error}
         routes={journey.routes}
         filteredRoutes={journey.filteredRoutes}
+        selectedRoute={journey.selectedRoute}
         activeFilter={journey.activeFilter}
         onToggleFilter={journey.toggleFilter}
         onRetry={journey.retrySearch}
+        onSelectRoute={journey.selectRoute}
       />
     </div>
   )

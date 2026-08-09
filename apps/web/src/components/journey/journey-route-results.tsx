@@ -11,9 +11,11 @@ type JourneyRouteResultsProps = {
   error: string | null
   routes: Route[]
   filteredRoutes: Route[]
+  selectedRoute: Route | null
   activeFilter: RouteFilter
   onToggleFilter: (filter: "LOW" | "HIGH") => void
   onRetry: () => void
+  onSelectRoute: (routeId: string) => void
 }
 
 export function JourneyRouteResults({
@@ -22,9 +24,11 @@ export function JourneyRouteResults({
   error,
   routes,
   filteredRoutes,
+  selectedRoute,
   activeFilter,
   onToggleFilter,
   onRetry,
+  onSelectRoute,
 }: JourneyRouteResultsProps) {
   if (loading) {
     return (
@@ -73,7 +77,12 @@ export function JourneyRouteResults({
         </div>
         <div className="flex flex-col gap-3">
           {filteredRoutes.map((route) => (
-            <RouteCard key={route.id} route={route} />
+            <RouteCard
+              key={route.id}
+              route={route}
+              selected={route.id === selectedRoute?.id}
+              onSelect={onSelectRoute}
+            />
           ))}
         </div>
       </section>

@@ -163,7 +163,9 @@ describe("JourneyPage", () => {
 
     await selectLocations(user)
     await user.click(screen.getByRole("button", { name: "Search routes" }))
-    await screen.findByText("Higher sensory load.")
+    await screen.findByRole("button", {
+      name: "Select 9 minute HIGH sensory route",
+    })
 
     const lowFilter = screen.getByRole("button", { name: "Low" })
     const highFilter = screen.getByRole("button", { name: "High" })
