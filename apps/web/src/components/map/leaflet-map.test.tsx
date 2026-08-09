@@ -52,6 +52,14 @@ const refuge: Refuge = {
   navigationUrl: "https://maps.example/treasury",
 }
 
+const distantRefuge: Refuge = {
+  ...refuge,
+  id: "library.1",
+  name: "Distant Library",
+  category: "LIBRARY",
+  coordinates: { latitude: -37.803, longitude: 144.978 },
+}
+
 const lowRoute: Route = {
   id: "route-low",
   durationMinutes: 12,
@@ -100,6 +108,8 @@ describe("LeafletMap", () => {
       "-37.8146,144.9681"
     )
     expect(screen.getByText("Treasury Gardens")).toBeInTheDocument()
+    expect(screen.getByText("Park")).toBeInTheDocument()
+    expect(screen.getByText("0.6 km away")).toBeInTheDocument()
     const link = screen.getByRole("link", { name: "Navigate to Treasury Gardens" })
     expect(link).toHaveAttribute("href", refuge.navigationUrl)
     expect(link).toHaveAttribute("target", "_blank")
@@ -150,5 +160,41 @@ describe("LeafletMap", () => {
         { padding: [24, 24] }
       )
     })
+  })
+
+  it("fits journey bounds around route geometry and visible refuges", async () => {
+    render(
+      <LeafletMap
+        origin={{ latitude: -37.8136, longitude: 144.9631 }}
+        routes={[lowRoute]}
+        refuges={[distantRefuge]}
+        selectedRouteId="route-low"
+      />
+    )
+
+    await waitFor(() => {
+      expect(fitBounds).toHaveBeenCalledWith(
+        [
+          [-37.8136, 144.9631],
+          [-37.8098, 144.9652],
+          [-37.803, 144.978],
+        ],
+        { padding: [24, 24] }
+      )
+    })
+  })
+
+  it("keeps a route-less quiet-spaces map centered on its single origin", async () => {
+    const origin = { latitude: -37.8136, longitude: 144.9631 }
+
+    render(<LeafletMap origin={origin} refuges={[refuge, distantRefuge]} />)
+
+    await waitFor(() => {
+      expect(setView).toHaveBeenCalledWith(
+        [origin.latitude, origin.longitude],
+        13
+      )
+    })
+    expect(fitBounds).not.toHaveBeenCalled()
   })
 })

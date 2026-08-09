@@ -1,4 +1,5 @@
-import type { Coordinates, Route } from "@clearway/shared"
+import type { Coordinates, Refuge, Route } from "@clearway/shared"
+import type { ReactNode } from "react"
 
 import { JourneyFilter } from "@/components/journey/journey-filter"
 import { Map } from "@/components/map/map"
@@ -13,6 +14,8 @@ type JourneyRouteResultsProps = {
   routes: Route[]
   filteredRoutes: Route[]
   selectedRoute: Route | null
+  refuges: Refuge[]
+  refugeControls: ReactNode
   origin: Coordinates | null
   destination: Coordinates | null
   activeFilter: RouteFilter
@@ -28,6 +31,8 @@ export function JourneyRouteResults({
   routes,
   filteredRoutes,
   selectedRoute,
+  refuges,
+  refugeControls,
   origin,
   destination,
   activeFilter,
@@ -81,10 +86,12 @@ export function JourneyRouteResults({
           origin={origin}
           destination={destination}
           routes={routes}
+          refuges={refuges}
           selectedRouteId={selectedRoute?.id}
           onRouteSelect={onSelectRoute}
         />
       </div>
+      {selectedRoute ? refugeControls : null}
       <JourneyFilter activeFilter={activeFilter} onToggleFilter={onToggleFilter} />
       <section className="flex flex-col gap-3">
         <div

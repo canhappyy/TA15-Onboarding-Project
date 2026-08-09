@@ -1,24 +1,24 @@
-import { type QuietSpaceFilter } from "@/hooks/use-quiet-spaces"
+import type { RefugeFilter } from "@/lib/refuge-filter"
 
-interface QuietSpaceFilterProps {
-  activeFilter: QuietSpaceFilter
-  onToggleFilter: (filter: QuietSpaceFilter) => void
+interface RefugeCategoryFilterProps {
+  activeFilter: RefugeFilter
+  onToggleFilter: (filter: RefugeFilter) => void
   className?: string
 }
 
-export function QuietSpaceFilterComponent({
+const filters: { label: string; value: RefugeFilter }[] = [
+  { label: "All", value: "all" },
+  { label: "Park", value: "PARK" },
+  { label: "Garden", value: "GARDEN" },
+  { label: "Library", value: "LIBRARY" },
+  { label: "Museum", value: "MUSEUM" },
+]
+
+export function RefugeCategoryFilter({
   activeFilter,
   onToggleFilter,
   className = "",
-}: QuietSpaceFilterProps) {
-  const filters: { label: string; value: QuietSpaceFilter }[] = [
-    { label: "All", value: "all" },
-    { label: "Park", value: "PARK" },
-    { label: "Garden", value: "GARDEN" },
-    { label: "Library", value: "LIBRARY" },
-    { label: "Museum", value: "MUSEUM" },
-  ]
-
+}: RefugeCategoryFilterProps) {
   return (
     <section className={`flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar ${className}`}>
       {filters.map((filter) => {

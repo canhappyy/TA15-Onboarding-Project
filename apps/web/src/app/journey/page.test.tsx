@@ -1,9 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { LocationSuggestion, Route } from "@clearway/shared"
+import type { LocationSuggestion, Refuge, Route } from "@clearway/shared"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import JourneyPage from "@/app/journey/page"
+import { JourneyRefugeSearchApiError, searchJourneyRefuges } from "@/lib/journey-refuge-api"
 import { searchLocations } from "@/lib/location-search-api"
 import { RouteSearchApiError, searchRoutes } from "@/lib/route-search-api"
 
@@ -16,6 +17,19 @@ vi.mock("@/lib/route-search-api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/route-search-api")>()
   return { ...original, searchRoutes: vi.fn() }
 })
+
+vi.mock("@/lib/journey-refuge-api", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/journey-refuge-api")>()
+  return { ...original, searchJourneyRefuges: vi.fn() }
+})
+
+vi.mock("@/components/map/map", () => ({
+  Map: ({ refuges = [] }: { refuges?: Refuge[] }) => (
+    <div data-testid="journey-map-markers">
+      {refuges.map((refuge) => <span key={refuge.id}>{refuge.name} marker</span>)}
+    </div>
+  ),
+}))
 
 const locations: Record<string, LocationSuggestion> = {
   "Town Hall": {
@@ -43,7 +57,7 @@ const lowRoute: Route = {
   indicator: "LOW",
   geometry: {
     type: "LineString",
-    coordinates: [[144.9631, -37.8136]],
+    coordinates: [[144.9631, -37.8136], [144.9652, -37.8098]],
   },
   recommended: true,
   warning: null,
@@ -69,6 +83,19 @@ const highRoute: Route = {
 
 const mockedSearchLocations = vi.mocked(searchLocations)
 const mockedSearchRoutes = vi.mocked(searchRoutes)
+const mockedSearchJourneyRefuges = vi.mocked(searchJourneyRefuges)
+
+const park: Refuge = {
+  id: "park.1",
+  name: "Treasury Gardens",
+  category: "PARK",
+  coordinates: { latitude: -37.8146, longitude: 144.9681 },
+  walkingDistanceKm: 0.6,
+  metadata: { source: "City of Melbourne Open Data" },
+  navigationUrl: "https://maps.example/treasury",
+}
+
+const museum: Refuge = { ...park, id: "museum.1", name: "Melbourne Museum", category: "MUSEUM" }
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => undefined
@@ -100,6 +127,8 @@ beforeEach(() => {
   mockedSearchLocations.mockReset()
   mockedSearchLocations.mockImplementation(async (query) => [locations[query]])
   mockedSearchRoutes.mockReset()
+  mockedSearchJourneyRefuges.mockReset()
+  mockedSearchJourneyRefuges.mockResolvedValue([])
 })
 
 afterEach(cleanup)
@@ -133,7 +162,7 @@ describe("JourneyPage", () => {
     await selectLocations(user)
     await user.click(screen.getByRole("button", { name: "Search routes" }))
 
-    expect(await screen.findByRole("status")).toHaveTextContent("2 routes found")
+    expect(await screen.findByText("2 routes found")).toBeInTheDocument()
     expect(screen.getByText("12 min")).toBeInTheDocument()
     expect(screen.getByText("0.8 km")).toBeInTheDocument()
     expect(screen.getByText("LOW")).toBeInTheDocument()
@@ -231,10 +260,23 @@ describe("JourneyPage", () => {
 
     await user.click(screen.getByRole("button", { name: "High" }))
     expect(screen.getByRole("button", { name: "High" })).toBeInTheDocument()
-    expect(screen.getByRole("status")).toHaveTextContent("0 routes found")
+    expect(screen.getByText("0 routes found")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "High" }))
     expect(screen.getByText("Lower sensory load.")).toBeInTheDocument()
+  })
+
+  it("hides quiet-space controls when a route filter leaves no selected route", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByRole("region", { name: "Quiet spaces along this route" })
+    await user.click(screen.getByRole("button", { name: "High" }))
+
+    expect(screen.queryByRole("region", { name: "Quiet spaces along this route" })).not.toBeInTheDocument()
   })
 
   it("shows an inline route error and retries the search", async () => {
@@ -268,5 +310,129 @@ describe("JourneyPage", () => {
 
     expect(screen.getByText("Choose an origin and destination to view routes.")).toBeInTheDocument()
     expect(screen.queryByText("Lower sensory load.")).not.toBeInTheDocument()
+  })
+
+  it("requests quiet spaces for the exact selected route and shows matching map markers", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute, highRoute])
+    mockedSearchJourneyRefuges.mockResolvedValueOnce([park, museum])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+
+    await screen.findByText("Treasury Gardens marker")
+    expect(mockedSearchJourneyRefuges).toHaveBeenCalledWith(
+      { origin: locations["Town Hall"].coordinates, route: lowRoute.geometry },
+      { signal: expect.any(AbortSignal) }
+    )
+    expect(screen.getByText("Melbourne Museum marker")).toBeInTheDocument()
+  })
+
+  it("aborts the old quiet-space request and searches the newly selected route", async () => {
+    const first = deferred<Refuge[]>()
+    const second = deferred<Refuge[]>()
+    const signals: AbortSignal[] = []
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute, highRoute])
+    mockedSearchJourneyRefuges.mockImplementation((_request, options) => {
+      signals.push(options?.signal as AbortSignal)
+      return signals.length === 1 ? first.promise : second.promise
+    })
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByRole("button", { name: "Select 9 minute HIGH sensory route" })
+    await user.click(screen.getByRole("button", { name: "Select 9 minute HIGH sensory route" }))
+
+    expect(signals[0]).toBeDefined()
+    expect(signals[0]?.aborted).toBe(true)
+    await vi.waitFor(() => expect(mockedSearchJourneyRefuges).toHaveBeenLastCalledWith(
+      { origin: locations["Town Hall"].coordinates, route: highRoute.geometry },
+      { signal: expect.any(AbortSignal) }
+    ))
+  })
+
+  it("clears existing markers before the next selected-route search resolves", async () => {
+    const second = deferred<Refuge[]>()
+    let searchAttempt = 0
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute, highRoute])
+    mockedSearchJourneyRefuges.mockImplementation(() => {
+      searchAttempt += 1
+      return searchAttempt === 1 ? Promise.resolve([park]) : second.promise
+    })
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByText("Treasury Gardens marker")
+    await user.click(screen.getByRole("button", { name: "Select 9 minute HIGH sensory route" }))
+
+    expect(screen.queryByText("Treasury Gardens marker")).not.toBeInTheDocument()
+  })
+
+  it("keeps map markers aligned with the active quiet-space category", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    mockedSearchJourneyRefuges.mockResolvedValueOnce([park, museum])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByText("Treasury Gardens marker")
+    await user.click(screen.getByRole("button", { name: "Museum" }))
+
+    expect(screen.queryByText("Treasury Gardens marker")).not.toBeInTheDocument()
+    expect(screen.getByText("Melbourne Museum marker")).toBeInTheDocument()
+  })
+
+  it("keeps route results available when quiet-space search fails", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    mockedSearchJourneyRefuges.mockRejectedValueOnce(
+      new JourneyRefugeSearchApiError("UPSTREAM_TIMEOUT", "Refuges timed out.")
+    )
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Refuges timed out.")
+    expect(screen.getByText("Lower sensory load.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Low" })).toBeEnabled()
+  })
+
+  it("retries only the failed quiet-space search", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    mockedSearchJourneyRefuges
+      .mockRejectedValueOnce(new JourneyRefugeSearchApiError("UPSTREAM_TIMEOUT", "Refuges timed out."))
+      .mockResolvedValueOnce([park])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByRole("alert")
+    await user.click(screen.getByRole("button", { name: "Retry" }))
+
+    expect(await screen.findByText("Treasury Gardens marker")).toBeInTheDocument()
+    expect(mockedSearchRoutes).toHaveBeenCalledTimes(1)
+    expect(mockedSearchJourneyRefuges).toHaveBeenCalledTimes(2)
+  })
+
+  it("clears quiet-space markers when a selected location changes", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    mockedSearchJourneyRefuges.mockResolvedValueOnce([park])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByText("Treasury Gardens marker")
+    await selectLocation(user, "Origin", "Parliament")
+
+    expect(screen.queryByText("Treasury Gardens marker")).not.toBeInTheDocument()
   })
 })
