@@ -83,6 +83,27 @@ describe("searchRoutes", () => {
     )
   })
 
+  it("rejects API failures with an unknown error code", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          success: false,
+          error: { code: "BOGUS", message: "Unknown failure." },
+        }),
+      })
+    )
+
+    await expect(searchRoutes(request)).rejects.toEqual(
+      new RouteSearchApiError(
+        "UPSTREAM_ERROR",
+        "Route search returned an invalid response."
+      )
+    )
+  })
+
   it("rejects when the public API base URL is absent", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "")
 

@@ -16,6 +16,7 @@ export function JourneyFilter({
       <span>Filter crowd level:</span>
       <button
         type="button"
+        aria-pressed={activeFilter === "LOW"}
         onClick={() => onToggleFilter("LOW")}
         className={`cursor-pointer rounded-md px-3 py-1 font-bold transition-all duration-200 ${
           activeFilter === "LOW"
@@ -27,6 +28,7 @@ export function JourneyFilter({
       </button>
       <button
         type="button"
+        aria-pressed={activeFilter === "HIGH"}
         onClick={() => onToggleFilter("HIGH")}
         className={`cursor-pointer rounded-md px-3 py-1 font-bold transition-all duration-200 ${
           activeFilter === "HIGH"

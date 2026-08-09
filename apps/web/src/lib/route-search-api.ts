@@ -2,7 +2,6 @@ import type {
   ApiErrorCode,
   Route,
   RouteSearchRequest,
-  RouteSearchResponse,
 } from "@clearway/shared"
 
 export type RouteSearchErrorCode =
@@ -25,6 +24,25 @@ const invalidResponse = () =>
     "UPSTREAM_ERROR",
     "Route search returned an invalid response."
   )
+
+const apiErrorCodes: Record<ApiErrorCode, true> = {
+  INVALID_REQUEST: true,
+  OUTSIDE_SERVICE_AREA: true,
+  NOT_FOUND: true,
+  UPSTREAM_TIMEOUT: true,
+  UPSTREAM_ERROR: true,
+  DATA_UNAVAILABLE: true,
+  TOO_MANY_REQUESTS: true,
+  INTERNAL_SERVER_ERROR: true,
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function isApiErrorCode(value: unknown): value is ApiErrorCode {
+  return typeof value === "string" && Object.hasOwn(apiErrorCodes, value)
+}
 
 export async function searchRoutes(
   request: RouteSearchRequest,
@@ -59,21 +77,21 @@ export async function searchRoutes(
     )
   }
 
-  let payload: RouteSearchResponse
+  let payload: unknown
   try {
-    payload = (await response.json()) as RouteSearchResponse
+    payload = await response.json()
   } catch {
     throw invalidResponse()
   }
 
-  if (!payload || typeof payload !== "object" || typeof payload.success !== "boolean") {
+  if (!isRecord(payload) || typeof payload.success !== "boolean") {
     throw invalidResponse()
   }
 
   if (!payload.success) {
     if (
-      !payload.error ||
-      typeof payload.error.code !== "string" ||
+      !isRecord(payload.error) ||
+      !isApiErrorCode(payload.error.code) ||
       typeof payload.error.message !== "string"
     ) {
       throw invalidResponse()
@@ -81,9 +99,9 @@ export async function searchRoutes(
     throw new RouteSearchApiError(payload.error.code, payload.error.message)
   }
 
-  if (!response.ok || !payload.data || !Array.isArray(payload.data.routes)) {
+  if (!response.ok || !isRecord(payload.data) || !Array.isArray(payload.data.routes)) {
     throw invalidResponse()
   }
 
-  return payload.data.routes
+  return payload.data.routes as Route[]
 }

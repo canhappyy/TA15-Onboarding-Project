@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { LocationSuggestion, Route } from "@clearway/shared"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -128,7 +128,7 @@ describe("JourneyPage", () => {
   it("renders live route fields and no route link after a successful search", async () => {
     mockedSearchRoutes.mockResolvedValueOnce([lowRoute, highRoute])
     const user = userEvent.setup()
-    const { container } = render(<JourneyPage />)
+    render(<JourneyPage />)
 
     await selectLocations(user)
     await user.click(screen.getByRole("button", { name: "Search routes" }))
@@ -140,7 +140,9 @@ describe("JourneyPage", () => {
     expect(screen.getByText("Recommended")).toBeInTheDocument()
     expect(screen.getByText("Lower sensory load.")).toBeInTheDocument()
     expect(screen.getByText("Crowds may be intense.")).toBeInTheDocument()
-    expect(container.querySelector("a")).not.toBeInTheDocument()
+    for (const routeArticle of screen.getAllByRole("article")) {
+      expect(within(routeArticle).queryByRole("link")).not.toBeInTheDocument()
+    }
   })
 
   it("shows an empty route message after a successful search with no routes", async () => {
@@ -163,11 +165,23 @@ describe("JourneyPage", () => {
     await user.click(screen.getByRole("button", { name: "Search routes" }))
     await screen.findByText("Higher sensory load.")
 
-    await user.click(screen.getByRole("button", { name: "Low" }))
+    const lowFilter = screen.getByRole("button", { name: "Low" })
+    const highFilter = screen.getByRole("button", { name: "High" })
+    expect(lowFilter).toHaveAttribute("aria-pressed", "false")
+    expect(highFilter).toHaveAttribute("aria-pressed", "false")
+
+    await user.click(lowFilter)
+    expect(lowFilter).toHaveAttribute("aria-pressed", "true")
+    expect(highFilter).toHaveAttribute("aria-pressed", "false")
     expect(screen.getByText("Lower sensory load.")).toBeInTheDocument()
     expect(screen.queryByText("Higher sensory load.")).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "High" }))
+    await user.click(lowFilter)
+    expect(lowFilter).toHaveAttribute("aria-pressed", "false")
+
+    await user.click(highFilter)
+    expect(lowFilter).toHaveAttribute("aria-pressed", "false")
+    expect(highFilter).toHaveAttribute("aria-pressed", "true")
     expect(screen.queryByText("Lower sensory load.")).not.toBeInTheDocument()
     expect(screen.getByText("Higher sensory load.")).toBeInTheDocument()
   })
