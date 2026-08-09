@@ -266,6 +266,19 @@ describe("JourneyPage", () => {
     expect(screen.getByText("Lower sensory load.")).toBeInTheDocument()
   })
 
+  it("hides quiet-space controls when a route filter leaves no selected route", async () => {
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute])
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByRole("region", { name: "Quiet spaces along this route" })
+    await user.click(screen.getByRole("button", { name: "High" }))
+
+    expect(screen.queryByRole("region", { name: "Quiet spaces along this route" })).not.toBeInTheDocument()
+  })
+
   it("shows an inline route error and retries the search", async () => {
     mockedSearchRoutes
       .mockRejectedValueOnce(
@@ -316,7 +329,7 @@ describe("JourneyPage", () => {
     expect(screen.getByText("Melbourne Museum marker")).toBeInTheDocument()
   })
 
-  it("aborts the old quiet-space request, clears markers, and searches the newly selected route", async () => {
+  it("aborts the old quiet-space request and searches the newly selected route", async () => {
     const first = deferred<Refuge[]>()
     const second = deferred<Refuge[]>()
     const signals: AbortSignal[] = []
@@ -335,11 +348,29 @@ describe("JourneyPage", () => {
 
     expect(signals[0]).toBeDefined()
     expect(signals[0]?.aborted).toBe(true)
-    expect(screen.queryByText(/marker$/)).not.toBeInTheDocument()
     await vi.waitFor(() => expect(mockedSearchJourneyRefuges).toHaveBeenLastCalledWith(
       { origin: locations["Town Hall"].coordinates, route: highRoute.geometry },
       { signal: expect.any(AbortSignal) }
     ))
+  })
+
+  it("clears existing markers before the next selected-route search resolves", async () => {
+    const second = deferred<Refuge[]>()
+    let searchAttempt = 0
+    mockedSearchRoutes.mockResolvedValueOnce([lowRoute, highRoute])
+    mockedSearchJourneyRefuges.mockImplementation(() => {
+      searchAttempt += 1
+      return searchAttempt === 1 ? Promise.resolve([park]) : second.promise
+    })
+    const user = userEvent.setup()
+    render(<JourneyPage />)
+
+    await selectLocations(user)
+    await user.click(screen.getByRole("button", { name: "Search routes" }))
+    await screen.findByText("Treasury Gardens marker")
+    await user.click(screen.getByRole("button", { name: "Select 9 minute HIGH sensory route" }))
+
+    expect(screen.queryByText("Treasury Gardens marker")).not.toBeInTheDocument()
   })
 
   it("keeps map markers aligned with the active quiet-space category", async () => {

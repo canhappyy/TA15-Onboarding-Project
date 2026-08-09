@@ -91,7 +91,7 @@ export function JourneyRouteResults({
           onRouteSelect={onSelectRoute}
         />
       </div>
-      {refugeControls}
+      {selectedRoute ? refugeControls : null}
       <JourneyFilter activeFilter={activeFilter} onToggleFilter={onToggleFilter} />
       <section className="flex flex-col gap-3">
         <div
