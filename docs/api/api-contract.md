@@ -150,6 +150,20 @@ missing or older than 30 minutes.
 
 Returns refuges within one kilometre of a journey route.
 
+Validation:
+
+- The top-level JSON object has exactly `origin` and `route`, with optional
+  `categories`; unknown or missing keys are rejected.
+- `origin` has exactly numeric, finite `latitude` and `longitude` keys. Values
+  must be within latitude `-90..90` and longitude `-180..180`.
+- `route` is a GeoJSON `LineString` with `coordinates`: 2 to 2,000 finite
+  `[longitude, latitude]` positions. Each position has exactly two numbers in
+  the same longitude and latitude ranges.
+- When present, `categories` is a non-empty array of unique supported values:
+  `LIBRARY`, `MUSEUM`, `GARDEN`, and `PARK`.
+- The origin and both route endpoints must be inside the City of Melbourne
+  boundary. A request outside this service area returns `OUTSIDE_SERVICE_AREA`.
+
 Request:
 
 ```json
@@ -163,7 +177,48 @@ Request:
 }
 ```
 
-Response uses the refuge shape documented under `GET /refuges`.
+Search semantics:
+
+- The complete route is used for straight-line candidate preselection:
+  refuges more than one kilometre from every route segment are excluded, then
+  at most 50 nearest candidates are retained.
+- The route is sampled to at most 50 source points before one ORS walking
+  matrix call. The matrix therefore has no more than 2,500 source-destination
+  cells.
+- A refuge is reachable only when at least one sampled route point has a
+  walking detour of at most one kilometre. Its `walkingDistanceKm` is that
+  minimum reachable walking distance.
+- Results sort by walking distance ascending, then name, then landmark ID, and
+  contain at most 20 refuges.
+
+Response uses the common envelope and the refuge shape documented under
+`GET /refuges`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "refuges": [
+      {
+        "id": "landmark-102",
+        "name": "State Library Victoria",
+        "category": "LIBRARY",
+        "coordinates": {"latitude": -37.8098, "longitude": 144.9652},
+        "walkingDistanceKm": 0.45,
+        "metadata": {"source": "City of Melbourne Open Data"},
+        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098%2C144.9652&travelmode=walking"
+      }
+    ]
+  }
+}
+```
+
+Errors: malformed bodies, invalid keys, invalid geometry, duplicate or
+unsupported categories return `400 INVALID_REQUEST`; outside requests return
+`400 OUTSIDE_SERVICE_AREA`; unavailable database data returns
+`503 DATA_UNAVAILABLE`; an ORS timeout returns `504 UPSTREAM_TIMEOUT`; an ORS
+failure returns `502 UPSTREAM_ERROR`; unexpected failures return
+`500 INTERNAL_SERVER_ERROR`.
 
 ## `GET /refuges`
 
@@ -197,7 +252,7 @@ ORS service failure returns `502`.
         "coordinates": {"latitude": -37.8098, "longitude": 144.9652},
         "walkingDistanceKm": 0.45,
         "metadata": {"source": "City of Melbourne Open Data"},
-        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098,144.9652"
+        "navigationUrl": "https://www.google.com/maps/dir/?api=1&destination=-37.8098%2C144.9652&travelmode=walking"
       }
     ]
   }

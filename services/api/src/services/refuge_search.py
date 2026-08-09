@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
-from typing import Any, Protocol
+from collections.abc import Collection, Sequence
+from typing import Any, Protocol, cast
 from urllib.parse import urlencode
 
-from src.repositories.api import RefugeRecord
+from src.common.route_geometry import (
+    point_to_route_distance_metres,
+    route_bounds,
+    sample_route_points,
+)
+from src.repositories.api import BoundingBox, RefugeRecord
 
 
 EARTH_RADIUS_METRES = 6_371_000
@@ -31,6 +36,24 @@ class RefugeDataLoaderLike(Protocol):
         self,
         origin: tuple[float, float],
         category: str | None = None,
+    ) -> list[RefugeRecord]: ...
+
+
+class RouteMatrixLike(Protocol):
+    def distances_for_sources(
+        self,
+        *,
+        sources: tuple[tuple[float, float], ...],
+        destinations: tuple[tuple[float, float], ...],
+    ) -> list[list[float | None]]: ...
+
+
+class RouteRefugeDataLoaderLike(Protocol):
+    def load_for_route(
+        self,
+        *,
+        bounds: BoundingBox,
+        categories: Collection[str] | None = None,
     ) -> list[RefugeRecord]: ...
 
 
@@ -76,6 +99,52 @@ class RefugeSearchService:
             )[:MAX_RESULTS]
         ]
 
+    def search_route(
+        self,
+        route: tuple[tuple[float, float], ...],
+        *,
+        categories: Collection[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        data_loader = cast(RouteRefugeDataLoaderLike, self._data_loader)
+        candidates = self._route_candidates(
+            route,
+            data_loader.load_for_route(
+                bounds=route_bounds(route),
+                categories=categories,
+            ),
+        )
+        if not candidates:
+            return []
+
+        route_points = sample_route_points(route)
+        matrix = cast(RouteMatrixLike, self._matrix)
+        walking_distances = matrix.distances_for_sources(
+            sources=route_points,
+            destinations=tuple(
+                (refuge.longitude, refuge.latitude) for refuge in candidates
+            ),
+        )
+        reachable = [
+            (refuge, minimum_distance)
+            for refuge, distances in zip(
+                candidates,
+                zip(*walking_distances, strict=True),
+                strict=True,
+            )
+            if (minimum_distance := min(
+                (distance for distance in distances if distance is not None),
+                default=None,
+            )) is not None
+            and minimum_distance <= SEARCH_RADIUS_METRES
+        ]
+        return [
+            self._response_refuge(refuge, distance)
+            for refuge, distance in sorted(
+                reachable,
+                key=lambda item: (item[1], item[0].name, item[0].landmark_id),
+            )[:MAX_RESULTS]
+        ]
+
     @staticmethod
     def _nearest_candidates(
         origin: tuple[float, float],
@@ -93,6 +162,29 @@ class RefugeSearchService:
                     for item in nearby
                     if item[1] <= SEARCH_RADIUS_METRES
                 ),
+                key=lambda item: (item[1], item[0].name, item[0].landmark_id),
+            )[:MAX_MATRIX_CANDIDATES]
+        ]
+
+    @staticmethod
+    def _route_candidates(
+        route: tuple[tuple[float, float], ...],
+        refuges: Sequence[RefugeRecord],
+    ) -> list[RefugeRecord]:
+        nearby = [
+            (
+                refuge,
+                point_to_route_distance_metres(
+                    (refuge.longitude, refuge.latitude),
+                    route,
+                ),
+            )
+            for refuge in refuges
+        ]
+        return [
+            refuge
+            for refuge, _ in sorted(
+                (item for item in nearby if item[1] <= SEARCH_RADIUS_METRES),
                 key=lambda item: (item[1], item[0].name, item[0].landmark_id),
             )[:MAX_MATRIX_CANDIDATES]
         ]

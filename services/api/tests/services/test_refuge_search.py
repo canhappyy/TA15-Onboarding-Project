@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
+from src.common.route_geometry import route_bounds
 from src.repositories.api import RefugeRecord
 from src.services.refuge_search import RefugeSearchService
 
@@ -45,6 +48,26 @@ class FakeMatrix:
 
     def distances(self, *, origin, destinations):
         self.calls.append((origin, destinations))
+        return self.distances_to_return
+
+
+class FakeRouteLoader:
+    def __init__(self, refuges):
+        self.refuges = refuges
+        self.calls = []
+
+    def load_for_route(self, *, bounds, categories=None):
+        self.calls.append((bounds, categories))
+        return self.refuges
+
+
+class FakeRouteMatrix:
+    def __init__(self, distances):
+        self.distances_to_return = distances
+        self.calls = []
+
+    def distances_for_sources(self, *, sources, destinations):
+        self.calls.append((sources, destinations))
         return self.distances_to_return
 
 
@@ -142,3 +165,96 @@ def test_search_returns_empty_without_matrix_call_when_no_candidate_is_in_radius
 
     assert results == []
     assert matrix.calls == []
+
+
+def test_search_route_uses_each_refuges_nearest_reachable_sampled_point():
+    route = ((144.9631, -37.8136), (144.9731, -37.8136))
+    loader = FakeRouteLoader(
+        [
+            refuge(1, name="Zulu", longitude=144.9640),
+            refuge(2, name="Alpha", longitude=144.9650),
+            refuge(3, name="Unreachable", longitude=144.9660),
+        ]
+    )
+    matrix = FakeRouteMatrix(
+        [[None, None, 500]]
+        + [[None, None, None] for _ in range(48)]
+        + [[120, None, 300]]
+    )
+
+    results = RefugeSearchService(matrix, loader).search_route(
+        route,
+        categories=("PARK", "LIBRARY"),
+    )
+
+    assert [result["id"] for result in results] == ["landmark-2", "landmark-1"]
+    assert [result["walkingDistanceKm"] for result in results] == [0.12, 0.3]
+    assert loader.calls == [(route_bounds(route), ("PARK", "LIBRARY"))]
+    sources, destinations = matrix.calls[0]
+    assert len(sources) == 50
+    assert sources[0] == route[0]
+    assert sources[24][0] == pytest.approx(144.9679979592)
+    assert sources[-1] == route[-1]
+    assert destinations == (
+        (144.9650, -37.8136),
+        (144.9660, -37.8136),
+        (144.9640, -37.8136),
+    )
+
+
+def test_search_route_preselects_landmarks_against_complete_route_segments():
+    route = ((144.9600, -37.8100), (144.9800, -37.8100))
+    near_midpoint = refuge(1, longitude=144.9700, latitude=-37.8045)
+    far_from_route = refuge(2, longitude=144.9700, latitude=-37.7900)
+    matrix = FakeRouteMatrix([[420] for _ in range(50)])
+
+    results = RefugeSearchService(
+        matrix,
+        FakeRouteLoader([far_from_route, near_midpoint]),
+    ).search_route(route)
+
+    assert [result["id"] for result in results] == ["landmark-1"]
+    sources, destinations = matrix.calls[0]
+    assert len(sources) == 50
+    assert sources[0] == route[0]
+    assert sources[-1] == route[-1]
+    assert destinations == ((144.9700, -37.8045),)
+
+
+def test_search_route_interpolates_sparse_route_to_match_matrix_rows():
+    route = ((144.9600, -37.8100), (144.9800, -37.8100))
+    matrix = FakeRouteMatrix([[None]] * 49 + [[250]])
+
+    results = RefugeSearchService(
+        matrix,
+        FakeRouteLoader([refuge(1, longitude=144.9700, latitude=-37.8100)]),
+    ).search_route(route)
+
+    sources, destinations = matrix.calls[0]
+    assert len(sources) == len(matrix.distances_to_return) == 50
+    assert sources[0] == route[0]
+    assert sources[-1] == route[-1]
+    assert len(destinations) == len(matrix.distances_to_return[0]) == 1
+    assert results[0]["walkingDistanceKm"] == 0.25
+
+
+def test_search_route_limits_one_matrix_request_to_fifty_by_fifty_pairs():
+    route = tuple((144.9600 + index * 0.0001, -37.8136) for index in range(99))
+    candidates = [
+        refuge(index, latitude=-37.8136 + index * 0.00001)
+        for index in range(1, 56)
+    ]
+    matrix = FakeRouteMatrix([[100] * 50 for _ in range(50)])
+
+    results = RefugeSearchService(
+        matrix,
+        FakeRouteLoader(candidates),
+    ).search_route(route)
+
+    assert len(matrix.calls) == 1
+    sources, destinations = matrix.calls[0]
+    assert len(sources) == 50
+    assert len(destinations) == 50
+    assert len(sources) * len(destinations) == 2_500
+    assert len(results) == 20
+    assert all(int(result["id"].removeprefix("landmark-")) <= 50 for result in results)

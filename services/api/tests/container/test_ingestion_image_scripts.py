@@ -89,7 +89,13 @@ def test_verify_runs_function_specific_smoke_commands(tmp_path):
         "database_migration": ("load_migrations", "/var/task/migrations"),
         "rds_connectivity": ("import psycopg", "src.functions.rds_connectivity.handler"),
         "route_search": ("import psycopg", "src.functions.route_search.handler"),
-        "refuge_search": ("import psycopg", "src.functions.refuge_search.handler"),
+        "refuge_search": (
+            "import psycopg",
+            "src.functions.refuge_search.handler",
+            '"method":"GET"',
+            '"method":"POST"',
+            '"statusCode"] == 200',
+        ),
     }
 
     for function_name, fragments in expected_fragments.items():
@@ -110,6 +116,30 @@ def test_verify_runs_function_specific_smoke_commands(tmp_path):
         assert "--platform linux/arm64" in invocation
         assert "--entrypoint python" in invocation
         assert all(fragment in invocation for fragment in fragments)
+
+
+def test_refuge_verify_checks_distinct_get_and_post_handler_results(tmp_path):
+    environment, log_path = _environment(tmp_path)
+
+    result = _run(["verify", "refuge_search", "clearway-refuge-search:test"], environment)
+
+    assert result.returncode == 0, result.stderr
+    invocation = next(
+        line
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.startswith("run ")
+    )
+    assert 'json.loads(get_response["body"])' in invocation
+    assert 'json.loads(post_response["body"])' in invocation
+    assert '"get-refuge"' in invocation
+    assert '"post-refuge"' in invocation
+    assert 'calls.append(("search", origin, category))' in invocation
+    assert 'calls.append(("search_route", route, categories))' in invocation
+    assert (
+        'assert calls == [("search", (144.9631, -37.8136), None), '
+        '("search_route", ((144.9631, -37.8136), (144.9731, -37.8136)), None)]'
+        in invocation
+    )
 
 
 def test_verify_rejects_non_arm64_image(tmp_path):
