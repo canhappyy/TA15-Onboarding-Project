@@ -1,0 +1,80 @@
+import type { Route } from "@clearway/shared"
+
+import { JourneyFilter } from "@/components/journey/journey-filter"
+import { RouteCard } from "@/components/journey/route-card"
+import type { RouteFilter } from "@/hooks/use-journey"
+import { Button } from "@/components/ui/button"
+
+type JourneyRouteResultsProps = {
+  hasSearched: boolean
+  loading: boolean
+  error: string | null
+  routes: Route[]
+  activeFilter: RouteFilter
+  onToggleFilter: (filter: "LOW" | "HIGH") => void
+  onRetry: () => void
+}
+
+export function JourneyRouteResults({
+  hasSearched,
+  loading,
+  error,
+  routes,
+  activeFilter,
+  onToggleFilter,
+  onRetry,
+}: JourneyRouteResultsProps) {
+  if (loading) {
+    return (
+      <p role="status" aria-live="polite" className="text-center text-sm text-slate-500 dark:text-slate-400">
+        Searching routes…
+      </p>
+    )
+  }
+
+  if (!hasSearched) {
+    return (
+      <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+        Choose an origin and destination to view routes.
+      </p>
+    )
+  }
+
+  if (error) {
+    return (
+      <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+        <span>{error}</span>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  if (routes.length === 0) {
+    return (
+      <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+        No routes found for this journey.
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <JourneyFilter activeFilter={activeFilter} onToggleFilter={onToggleFilter} />
+      <section className="flex flex-col gap-3">
+        <div
+          role="status"
+          className="text-[10px] font-bold uppercase tracking-wider text-slate-450 dark:text-slate-500"
+        >
+          {routes.length} route{routes.length !== 1 && "s"} found
+        </div>
+        <div className="flex flex-col gap-3">
+          {routes.map((route) => (
+            <RouteCard key={route.id} route={route} />
+          ))}
+        </div>
+      </section>
+    </>
+  )
+}
