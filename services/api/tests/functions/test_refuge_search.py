@@ -14,6 +14,7 @@ from src.functions.refuge_search.handler import (
     _search_bounds,
     lambda_handler,
 )
+from src.repositories.api import BoundingBox
 from src.services.refuge_search import RefugeSearchDataUnavailable
 
 
@@ -191,6 +192,45 @@ def test_data_loader_uses_tls_read_only_database_connection_and_category():
     ]
     assert connection.statements == ["SET TRANSACTION READ ONLY"]
     assert repository.calls[0][1] == ["PARK"]
+
+
+def test_data_loader_reuses_read_only_connection_for_route_bounds_and_categories():
+    connection = FakeConnection()
+    repository = FakeRepository()
+    connect_calls = []
+
+    def connect(**kwargs):
+        connect_calls.append(kwargs)
+        return Context(connection)
+
+    loader = PsycopgRefugeDataLoader(
+        settings=DatabaseSettings("db.internal", 5432, "clearway"),
+        username="reader",
+        password="db-pass",
+        connect=connect,
+        repository_factory=lambda database_connection: repository,
+        database_errors=(RuntimeError,),
+    )
+    bounds = BoundingBox(-37.82, 144.95, -37.80, 144.98)
+
+    assert loader.load_for_route(
+        bounds=bounds,
+        categories=("LIBRARY", "PARK"),
+    ) == []
+
+    assert connect_calls == [
+        {
+            "host": "db.internal",
+            "port": 5432,
+            "dbname": "clearway",
+            "user": "reader",
+            "password": "db-pass",
+            "sslmode": "require",
+            "connect_timeout": 5,
+        }
+    ]
+    assert connection.statements == ["SET TRANSACTION READ ONLY"]
+    assert repository.calls == [(bounds, ("LIBRARY", "PARK"))]
 
 
 def test_database_bounds_include_candidates_exactly_one_kilometre_away():

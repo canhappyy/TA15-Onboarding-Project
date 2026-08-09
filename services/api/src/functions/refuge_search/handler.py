@@ -150,6 +150,15 @@ class PsycopgRefugeDataLoader:
         self._database_errors = database_errors
 
     def load(self, origin, category=None):
+        return self._load(
+            bounds=_search_bounds(origin),
+            categories=[category] if category else None,
+        )
+
+    def load_for_route(self, *, bounds, categories=None):
+        return self._load(bounds=bounds, categories=categories)
+
+    def _load(self, *, bounds, categories):
         try:
             with self._connect(
                 host=self._settings.host,
@@ -164,8 +173,8 @@ class PsycopgRefugeDataLoader:
                     connection.execute("SET TRANSACTION READ ONLY")
                     repository = self._repository_factory(connection)
                     return repository.list_refuges(
-                        bounds=_search_bounds(origin),
-                        categories=[category] if category else None,
+                        bounds=bounds,
+                        categories=categories,
                     )
         except self._database_errors as error:
             raise RefugeSearchDataUnavailable(
