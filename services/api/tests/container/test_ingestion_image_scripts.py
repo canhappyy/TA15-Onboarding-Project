@@ -89,7 +89,13 @@ def test_verify_runs_function_specific_smoke_commands(tmp_path):
         "database_migration": ("load_migrations", "/var/task/migrations"),
         "rds_connectivity": ("import psycopg", "src.functions.rds_connectivity.handler"),
         "route_search": ("import psycopg", "src.functions.route_search.handler"),
-        "refuge_search": ("import psycopg", "src.functions.refuge_search.handler"),
+        "refuge_search": (
+            "import psycopg",
+            "src.functions.refuge_search.handler",
+            '"method":"GET"',
+            '"method":"POST"',
+            '"statusCode"] == 200',
+        ),
     }
 
     for function_name, fragments in expected_fragments.items():

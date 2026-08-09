@@ -35,7 +35,7 @@ configure_function() {
     refuge_search)
       dockerfile="${repository_root}/services/api/src/functions/refuge_search/Dockerfile"
       build_context="${repository_root}"
-      smoke_code='import importlib.util; import psycopg; assert importlib.util.find_spec("pandas") is None; assert importlib.util.find_spec("numpy") is None; assert importlib.util.find_spec("sqlalchemy") is None; from src.functions.refuge_search.handler import lambda_handler; assert callable(lambda_handler)'
+      smoke_code='import importlib.util; import psycopg; assert importlib.util.find_spec("pandas") is None; assert importlib.util.find_spec("numpy") is None; assert importlib.util.find_spec("sqlalchemy") is None; from src.functions.refuge_search.handler import lambda_handler; service=type("FakeService", (), {"search": lambda self, origin, category=None: [], "search_route": lambda self, route, categories=None: []})(); get_event={"version":"2.0","rawPath":"/refuges","requestContext":{"http":{"method":"GET"}},"queryStringParameters":{"latitude":"-37.8136","longitude":"144.9631"}}; post_event={"version":"2.0","rawPath":"/refuges/search","requestContext":{"http":{"method":"POST"}},"body":"{\"origin\":{\"latitude\":-37.8136,\"longitude\":144.9631},\"route\":{\"type\":\"LineString\",\"coordinates\":[[144.9631,-37.8136],[144.9731,-37.8136]]}}"}; get_response=lambda_handler(get_event, None, service=service); post_response=lambda_handler(post_event, None, service=service); assert get_response["statusCode"] == 200; assert post_response["statusCode"] == 200'
       ;;
     *)
       echo "unsupported Lambda function: ${function_name}" >&2
