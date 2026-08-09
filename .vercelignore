@@ -18,7 +18,8 @@ node_modules/
 out/
 dist/
 
-# Exclude IDE and system files
+# Exclude IDE, system, and config files
 .DS_Store
 .idea/
 .vscode/
+.superpowers/
