@@ -127,3 +127,18 @@ output "route_search_repository_url" {
   description = "ECR repository used by the route-search Lambda"
   value       = aws_ecr_repository.route_search.repository_url
 }
+
+output "refuge_search_endpoint" {
+  description = "Nearby quiet-space refuge search endpoint"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/refuges"
+}
+
+output "refuge_search_lambda_name" {
+  description = "Name of the refuge-search Lambda"
+  value       = aws_lambda_function.refuge_search.function_name
+}
+
+output "refuge_search_repository_url" {
+  description = "ECR repository used by the refuge-search Lambda"
+  value       = aws_ecr_repository.refuge_search.repository_url
+}

@@ -95,6 +95,12 @@ export type RefugeSearchData = {
   refuges: Refuge[]
 }
 
+export type RefugeListRequest = Coordinates & {
+  category?: RefugeCategory
+}
+
+export type RefugeListResponse = ApiResponse<RefugeSearchData>
+
 export type CongestionSensor = {
   id: string
   name: string

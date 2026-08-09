@@ -1,6 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
+import type { Coordinates, Refuge } from "@clearway/shared"
 
 const LeafletMap = dynamic(
   () =>
@@ -18,6 +19,11 @@ const LeafletMap = dynamic(
   }
 )
 
-export function Map() {
-  return <LeafletMap />
+interface MapProps {
+  origin?: Coordinates | null
+  refuges?: Refuge[]
+}
+
+export function Map({ origin, refuges }: MapProps) {
+  return <LeafletMap origin={origin} refuges={refuges} />
 }

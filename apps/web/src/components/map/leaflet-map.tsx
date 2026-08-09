@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect } from "react"
-import { MapContainer, TileLayer, useMap } from "react-leaflet"
-import { useGeolocation } from "@/hooks/use-geolocation"
+import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from "react-leaflet"
+import type { Coordinates, Refuge } from "@clearway/shared"
 
 const DEFAULT_POSITION: [number, number] = [-37.8136, 144.9631]
 
@@ -15,8 +15,15 @@ function ChangeMapView({ center }: { center: [number, number] }) {
   return null
 }
 
-export function LeafletMap() {
-  const { position } = useGeolocation(DEFAULT_POSITION)
+interface LeafletMapProps {
+  origin?: Coordinates | null
+  refuges?: Refuge[]
+}
+
+export function LeafletMap({ origin, refuges = [] }: LeafletMapProps) {
+  const center: [number, number] = origin
+    ? [origin.latitude, origin.longitude]
+    : DEFAULT_POSITION
 
   return (
     <MapContainer
@@ -25,11 +32,32 @@ export function LeafletMap() {
       scrollWheelZoom
       className="h-full w-full"
     >
-      <ChangeMapView center={position} />
+      <ChangeMapView center={center} />
       <TileLayer
         attribution="&copy; OpenStreetMap contributors"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {refuges.map((refuge) => (
+        <CircleMarker
+          key={refuge.id}
+          center={[refuge.coordinates.latitude, refuge.coordinates.longitude]}
+          radius={8}
+          pathOptions={{ color: "#475569", fillColor: "#8da2cf", fillOpacity: 0.9 }}
+        >
+          <Popup>
+            <strong>{refuge.name}</strong>
+            <p>{refuge.walkingDistanceKm.toFixed(1)} km away</p>
+            <a
+              href={refuge.navigationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Navigate to ${refuge.name}`}
+            >
+              Navigate
+            </a>
+          </Popup>
+        </CircleMarker>
+      ))}
     </MapContainer>
   )
 }

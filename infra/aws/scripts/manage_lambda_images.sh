@@ -32,6 +32,11 @@ configure_function() {
       build_context="${repository_root}"
       smoke_code='import importlib.util; import psycopg; assert importlib.util.find_spec("pandas") is None; assert importlib.util.find_spec("numpy") is None; assert importlib.util.find_spec("sqlalchemy") is None; from src.functions.route_search.handler import lambda_handler; assert callable(lambda_handler)'
       ;;
+    refuge_search)
+      dockerfile="${repository_root}/services/api/src/functions/refuge_search/Dockerfile"
+      build_context="${repository_root}"
+      smoke_code='import importlib.util; import psycopg; assert importlib.util.find_spec("pandas") is None; assert importlib.util.find_spec("numpy") is None; assert importlib.util.find_spec("sqlalchemy") is None; from src.functions.refuge_search.handler import lambda_handler; assert callable(lambda_handler)'
+      ;;
     *)
       echo "unsupported Lambda function: ${function_name}" >&2
       exit 2
@@ -103,6 +108,8 @@ publish_all() {
     RDS_CONNECTIVITY_IMAGE_TAG
     ROUTE_SEARCH_REPOSITORY_URL
     ROUTE_SEARCH_IMAGE_TAG
+    REFUGE_SEARCH_REPOSITORY_URL
+    REFUGE_SEARCH_IMAGE_TAG
   )
   local variable_name
   for variable_name in "${required_variables[@]}"; do
@@ -115,28 +122,31 @@ publish_all() {
   local registry="${INGESTION_REPOSITORY_URL%%/*}"
   if [[ "${DATABASE_MIGRATION_REPOSITORY_URL%%/*}" != "${registry}" ||
     "${RDS_CONNECTIVITY_REPOSITORY_URL%%/*}" != "${registry}" ||
-    "${ROUTE_SEARCH_REPOSITORY_URL%%/*}" != "${registry}" ]]; then
+    "${ROUTE_SEARCH_REPOSITORY_URL%%/*}" != "${registry}" ||
+    "${REFUGE_SEARCH_REPOSITORY_URL%%/*}" != "${registry}" ]]; then
     echo "Lambda image repositories must use the same ECR registry" >&2
     exit 2
   fi
 
-  local functions=(ingestion database_migration rds_connectivity route_search)
+  local functions=(ingestion database_migration rds_connectivity route_search refuge_search)
   local repository_urls=(
     "${INGESTION_REPOSITORY_URL}"
     "${DATABASE_MIGRATION_REPOSITORY_URL}"
     "${RDS_CONNECTIVITY_REPOSITORY_URL}"
     "${ROUTE_SEARCH_REPOSITORY_URL}"
+    "${REFUGE_SEARCH_REPOSITORY_URL}"
   )
   local image_tags=(
     "${INGESTION_IMAGE_TAG}"
     "${DATABASE_MIGRATION_IMAGE_TAG}"
     "${RDS_CONNECTIVITY_IMAGE_TAG}"
     "${ROUTE_SEARCH_IMAGE_TAG}"
+    "${REFUGE_SEARCH_IMAGE_TAG}"
   )
-  local missing=(false false false false)
+  local missing=(false false false false false)
   local index status
 
-  for index in 0 1 2 3; do
+  for index in 0 1 2 3 4; do
     if image_exists "${repository_urls[index]}" "${image_tags[index]}"; then
       continue
     else
@@ -154,7 +164,7 @@ publish_all() {
       docker login --username AWS --password-stdin "${registry}"
   fi
 
-  for index in 0 1 2 3; do
+  for index in 0 1 2 3 4; do
     if [[ "${missing[index]}" == true ]]; then
       build_image \
         "${functions[index]}" \

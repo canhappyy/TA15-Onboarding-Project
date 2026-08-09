@@ -2,9 +2,11 @@ import pytest
 
 from src.clients.open_route_service import (
     DIRECTION_URL,
+    MATRIX_URL,
     OpenRouteServiceError,
     OpenRouteServiceDirections,
     OpenRouteServiceGeocoder,
+    OpenRouteServiceMatrix,
     OpenRouteServiceNotFound,
     OpenRouteServiceTimeout,
     RouteCandidate,
@@ -252,4 +254,105 @@ def test_directions_reports_no_route_when_feature_collection_is_empty():
         ).alternatives(
             origin=(144.9671, -37.8179),
             destination=(144.9652, -37.8098),
+        )
+
+
+def test_matrix_sends_one_foot_walking_request_and_returns_distances():
+    captured = {}
+
+    def request_json(url, body, headers, timeout):
+        captured.update(url=url, body=body, headers=headers, timeout=timeout)
+        return {"distances": [[218.4, None, 904.7]]}
+
+    distances = OpenRouteServiceMatrix(
+        "secret-key",
+        request_json=request_json,
+    ).distances(
+        origin=(144.9631, -37.8136),
+        destinations=(
+            (144.9652, -37.8098),
+            (144.9720, -37.8150),
+            (144.9580, -37.8170),
+        ),
+    )
+
+    assert captured == {
+        "url": MATRIX_URL,
+        "body": {
+            "locations": [
+                [144.9631, -37.8136],
+                [144.9652, -37.8098],
+                [144.972, -37.815],
+                [144.958, -37.817],
+            ],
+            "sources": ["0"],
+            "destinations": ["1", "2", "3"],
+            "metrics": ["distance"],
+        },
+        "headers": {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": "secret-key",
+        },
+        "timeout": 5,
+    }
+    assert distances == [218.4, None, 904.7]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"distances": []},
+        {"distances": "bad"},
+        {"distances": [[218.4]]},
+        {"distances": [[218.4, "bad", 904.7]]},
+        {"distances": [[218.4, float("inf"), 904.7]]},
+    ],
+)
+def test_matrix_rejects_malformed_distance_envelopes(payload):
+    with pytest.raises(OpenRouteServiceError, match="malformed"):
+        OpenRouteServiceMatrix(
+            "secret-key",
+            request_json=lambda url, body, headers, timeout: payload,
+        ).distances(
+            origin=(144.9631, -37.8136),
+            destinations=(
+                (144.9652, -37.8098),
+                (144.9720, -37.8150),
+                (144.9580, -37.8170),
+            ),
+        )
+
+
+def test_matrix_maps_timeout_without_exposing_coordinates():
+    def request_json(url, body, headers, timeout):
+        raise TimeoutError("timed out")
+
+    with pytest.raises(OpenRouteServiceTimeout, match="timed out"):
+        OpenRouteServiceMatrix("secret-key", request_json=request_json).distances(
+            origin=(144.9631, -37.8136),
+            destinations=((144.9652, -37.8098),),
+        )
+
+
+def test_matrix_maps_request_failure_to_ors_error():
+    def request_json(url, body, headers, timeout):
+        raise RuntimeError("upstream unavailable")
+
+    with pytest.raises(OpenRouteServiceError, match="request failed"):
+        OpenRouteServiceMatrix("secret-key", request_json=request_json).distances(
+            origin=(144.9631, -37.8136),
+            destinations=((144.9652, -37.8098),),
+        )
+
+
+def test_matrix_maps_not_found_to_ors_error():
+    def request_json(url, body, headers, timeout):
+        raise OpenRouteServiceNotFound("no walking route")
+
+    with pytest.raises(OpenRouteServiceError, match="HTTP error"):
+        OpenRouteServiceMatrix("secret-key", request_json=request_json).distances(
+            origin=(144.9631, -37.8136),
+            destinations=((144.9652, -37.8098),),
         )

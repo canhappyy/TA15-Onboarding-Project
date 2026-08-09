@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 GEOCODING_URL = "https://api.heigit.org/pelias/v1/search"
 DIRECTION_URL = "https://api.openrouteservice.org/v2/directions/foot-walking/geojson"
+MATRIX_URL = "https://api.openrouteservice.org/v2/matrix/foot-walking"
 REQUEST_TIMEOUT_SECONDS = 5
 
 
@@ -292,6 +293,90 @@ class OpenRouteServiceDirections:
             distance_metres=float(distance),
             duration_seconds=float(duration),
         )
+
+
+class OpenRouteServiceMatrix:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        request_json: Callable[
+            [str, dict[str, Any], dict[str, str], int], dict[str, Any]
+        ] = _post_json,
+    ) -> None:
+        self._api_key = api_key
+        self._request_json = request_json
+
+    def distances(
+        self,
+        *,
+        origin: tuple[float, float],
+        destinations: tuple[tuple[float, float], ...],
+    ) -> list[float | None]:
+        if not destinations:
+            return []
+
+        body = {
+            "locations": [list(origin), *map(list, destinations)],
+            "sources": ["0"],
+            "destinations": [
+                str(index) for index in range(1, len(destinations) + 1)
+            ],
+            "metrics": ["distance"],
+        }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": self._api_key,
+        }
+        try:
+            payload = self._request_json(
+                MATRIX_URL,
+                body,
+                headers,
+                REQUEST_TIMEOUT_SECONDS,
+            )
+        except OpenRouteServiceNotFound as error:
+            raise OpenRouteServiceError(
+                "OpenRouteService returned an HTTP error"
+            ) from error
+        except OpenRouteServiceError:
+            raise
+        except (TimeoutError, socket.timeout) as error:
+            raise OpenRouteServiceTimeout(
+                "OpenRouteService request timed out"
+            ) from error
+        except Exception as error:
+            raise OpenRouteServiceError("OpenRouteService request failed") from error
+
+        return self._parse_distances(payload, expected_count=len(destinations))
+
+    @staticmethod
+    def _parse_distances(
+        payload: dict[str, Any], *, expected_count: int
+    ) -> list[float | None]:
+        matrix = payload.get("distances")
+        if (
+            not isinstance(matrix, list)
+            or len(matrix) != 1
+            or not isinstance(matrix[0], list)
+            or len(matrix[0]) != expected_count
+        ):
+            raise OpenRouteServiceError(
+                "OpenRouteService returned a malformed response"
+            )
+
+        distances: list[float | None] = []
+        for value in matrix[0]:
+            if value is None:
+                distances.append(None)
+            elif _finite_number(value) and value >= 0:
+                distances.append(float(value))
+            else:
+                raise OpenRouteServiceError(
+                    "OpenRouteService returned a malformed response"
+                )
+        return distances
 
 
 def _finite_number(value: Any) -> bool:

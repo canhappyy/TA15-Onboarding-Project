@@ -13,9 +13,10 @@ export function QuietSpaceFilterComponent({
 }: QuietSpaceFilterProps) {
   const filters: { label: string; value: QuietSpaceFilter }[] = [
     { label: "All", value: "all" },
-    { label: "Parks", value: "Park" },
-    { label: "Library", value: "Library" },
-    { label: "Cafe", value: "Cafe" },
+    { label: "Park", value: "PARK" },
+    { label: "Garden", value: "GARDEN" },
+    { label: "Library", value: "LIBRARY" },
+    { label: "Museum", value: "MUSEUM" },
   ]
 
   return (
@@ -27,6 +28,7 @@ export function QuietSpaceFilterComponent({
             key={filter.value}
             type="button"
             onClick={() => onToggleFilter(filter.value)}
+            aria-pressed={isSelected}
             className={`cursor-pointer rounded-lg px-4 py-1.5 text-xs font-bold transition-all duration-200 ${
               isSelected
                 ? "bg-[#475569] text-white shadow-xs scale-102"
