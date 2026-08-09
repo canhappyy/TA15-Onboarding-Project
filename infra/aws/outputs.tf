@@ -108,6 +108,11 @@ output "ingestion_alert_topic_arn" {
   value       = aws_sns_topic.ingestion_alerts.arn
 }
 
+output "ingestion_freshness_alarm_name" {
+  description = "CloudWatch alarm detecting stale or missing pedestrian minute ingestion"
+  value       = aws_cloudwatch_metric_alarm.ingestion_freshness.alarm_name
+}
+
 output "route_search_endpoint" {
   description = "Sensory-aware walking route search endpoint"
   value       = "${aws_apigatewayv2_api.main.api_endpoint}/routes/search"

@@ -146,6 +146,8 @@ run "ingestion_infrastructure_plan" {
         "DATABASE_NAME",
         "DATABASE_PORT",
         "DATABASE_SECRET_ARN",
+        "ENVIRONMENT",
+        "METRIC_NAMESPACE",
       ])
     )
     error_message = "Ingestion Lambda must use private database networking and configuration."
@@ -198,6 +200,24 @@ run "ingestion_infrastructure_plan" {
 
   assert {
     condition = (
+      aws_cloudwatch_metric_alarm.ingestion_freshness.namespace == "ClearWay/Ingestion" &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.metric_name == "MinuteDataFresh" &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.statistic == "Minimum" &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.period == 900 &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.evaluation_periods == 3 &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.datapoints_to_alarm == 2 &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.comparison_operator == "LessThanThreshold" &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.threshold == 1 &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.treat_missing_data == "breaching" &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.actions_enabled == false &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.dimensions == tomap({ Environment = "dev" }) &&
+      aws_cloudwatch_metric_alarm.ingestion_freshness.alarm_actions == toset([aws_sns_topic.ingestion_alerts.arn])
+    )
+    error_message = "Minute freshness alarm must detect stale or missing ingestion and notify the existing SNS topic."
+  }
+
+  assert {
+    condition = (
       aws_lambda_function_event_invoke_config.ingestion.maximum_retry_attempts == 2 &&
       aws_lambda_function_event_invoke_config.ingestion.maximum_event_age_in_seconds == 3600 &&
       aws_lambda_function_event_invoke_config.ingestion.destination_config[0].on_failure[0].destination == aws_sqs_queue.ingestion_dlq.arn
@@ -208,7 +228,8 @@ run "ingestion_infrastructure_plan" {
   assert {
     condition = (
       output.ingestion_lambda_name == "ta15-onboarding-dev-ingestion" &&
-      output.ingestion_schedules_enabled == false
+      output.ingestion_schedules_enabled == false &&
+      output.ingestion_freshness_alarm_name == "ta15-onboarding-dev-ingestion-minute-freshness"
     )
     error_message = "Ingestion deployment outputs must expose the function and schedule state."
   }
