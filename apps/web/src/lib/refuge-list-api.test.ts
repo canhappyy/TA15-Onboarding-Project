@@ -167,4 +167,22 @@ describe("listRefuges", () => {
 
     await expect(listRefuges(request)).rejects.toBe(abortError)
   })
+
+  it("rejects a success envelope received with a non-2xx response", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ success: true, data: { refuges: [] } }),
+      })
+    )
+
+    await expect(listRefuges(request)).rejects.toEqual(
+      new RefugeListApiError(
+        "MALFORMED_RESPONSE",
+        "Quiet spaces returned an invalid response."
+      )
+    )
+  })
 })
