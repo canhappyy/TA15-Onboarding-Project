@@ -316,11 +316,26 @@ class OpenRouteServiceMatrix:
         if not destinations:
             return []
 
+        return self.distances_for_sources(
+            sources=(origin,),
+            destinations=destinations,
+        )[0]
+
+    def distances_for_sources(
+        self,
+        *,
+        sources: tuple[tuple[float, float], ...],
+        destinations: tuple[tuple[float, float], ...],
+    ) -> list[list[float | None]]:
+        if not sources or not destinations:
+            return []
+
         body = {
-            "locations": [list(origin), *map(list, destinations)],
-            "sources": ["0"],
+            "locations": [*map(list, sources), *map(list, destinations)],
+            "sources": [str(index) for index in range(len(sources))],
             "destinations": [
-                str(index) for index in range(1, len(destinations) + 1)
+                str(index)
+                for index in range(len(sources), len(sources) + len(destinations))
             ],
             "metrics": ["distance"],
         }
@@ -349,33 +364,46 @@ class OpenRouteServiceMatrix:
         except Exception as error:
             raise OpenRouteServiceError("OpenRouteService request failed") from error
 
-        return self._parse_distances(payload, expected_count=len(destinations))
+        return self._parse_distance_matrix(
+            payload,
+            expected_source_count=len(sources),
+            expected_destination_count=len(destinations),
+        )
 
     @staticmethod
-    def _parse_distances(
-        payload: dict[str, Any], *, expected_count: int
-    ) -> list[float | None]:
-        matrix = payload.get("distances")
+    def _parse_distance_matrix(
+        payload: Any,
+        *,
+        expected_source_count: int,
+        expected_destination_count: int,
+    ) -> list[list[float | None]]:
+        matrix = payload.get("distances") if isinstance(payload, dict) else None
         if (
             not isinstance(matrix, list)
-            or len(matrix) != 1
-            or not isinstance(matrix[0], list)
-            or len(matrix[0]) != expected_count
+            or len(matrix) != expected_source_count
+            or any(
+                not isinstance(row, list)
+                or len(row) != expected_destination_count
+                for row in matrix
+            )
         ):
             raise OpenRouteServiceError(
                 "OpenRouteService returned a malformed response"
             )
 
-        distances: list[float | None] = []
-        for value in matrix[0]:
-            if value is None:
-                distances.append(None)
-            elif _finite_number(value) and value >= 0:
-                distances.append(float(value))
-            else:
-                raise OpenRouteServiceError(
-                    "OpenRouteService returned a malformed response"
-                )
+        distances = []
+        for row in matrix:
+            parsed_row: list[float | None] = []
+            for value in row:
+                if value is None:
+                    parsed_row.append(None)
+                elif _finite_number(value) and value >= 0:
+                    parsed_row.append(float(value))
+                else:
+                    raise OpenRouteServiceError(
+                        "OpenRouteService returned a malformed response"
+                    )
+            distances.append(parsed_row)
         return distances
 
 

@@ -299,6 +299,44 @@ def test_matrix_sends_one_foot_walking_request_and_returns_distances():
     assert distances == [218.4, None, 904.7]
 
 
+def test_matrix_sends_one_request_for_many_sources_and_destinations():
+    captured = {}
+
+    def request_json(url, body, headers, timeout):
+        captured.update(url=url, body=body, headers=headers, timeout=timeout)
+        return {"distances": [[218.4, None], [904.7, 150.0]]}
+
+    distances = OpenRouteServiceMatrix(
+        "secret-key",
+        request_json=request_json,
+    ).distances_for_sources(
+        sources=((144.9631, -37.8136), (144.9720, -37.8150)),
+        destinations=((144.9652, -37.8098), (144.9580, -37.8170)),
+    )
+
+    assert captured == {
+        "url": MATRIX_URL,
+        "body": {
+            "locations": [
+                [144.9631, -37.8136],
+                [144.972, -37.815],
+                [144.9652, -37.8098],
+                [144.958, -37.817],
+            ],
+            "sources": ["0", "1"],
+            "destinations": ["2", "3"],
+            "metrics": ["distance"],
+        },
+        "headers": {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": "secret-key",
+        },
+        "timeout": 5,
+    }
+    assert distances == [[218.4, None], [904.7, 150.0]]
+
+
 @pytest.mark.parametrize(
     "payload",
     [
