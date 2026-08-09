@@ -1,0 +1,24 @@
+# Exclude backend and infrastructure folders
+services/
+infra/
+docs/
+packages/database/
+
+# Exclude python and test caches
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Exclude local node/build outputs
+node_modules/
+.next/
+.terraform/
+.terraform-build/
+out/
+dist/
+
+# Exclude IDE and system files
+.DS_Store
+.idea/
+.vscode/
