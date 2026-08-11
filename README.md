@@ -49,6 +49,113 @@ project-root/
 
 ---
 
+# System Architecture
+
+The following diagram illustrates the end-to-end system architecture of ClearWay, spanning the frontend, backend APIs, data ingestion pipeline, database storage, and ops/monitoring components.
+
+```mermaid
+flowchart TB
+    subgraph Client["Client"]
+        Web["Next.js Web App<br/>Journey + Quiet Spaces<br/>(local or external host)"]
+    end
+
+    subgraph AWS["AWS Cloud"]
+        Gateway["API Gateway<br/>HTTP API"]
+
+        subgraph NonVPC["Non-VPC API Lambdas"]
+            Health["Health Lambda<br/>Python 3.13 ZIP"]
+            Location["Location Search Lambda<br/>Python 3.13 ZIP"]
+        end
+
+        Secrets["Secrets Manager<br/>ORS API key<br/>Admin DB credentials<br/>Read-only DB credentials"]
+
+        subgraph VPC["VPC — Public and Private Subnets"]
+            subgraph PrivateAPI["Private API Lambdas<br/>Python 3.13 ARM64 containers"]
+                Route["Route Search Lambda"]
+                Refuge["Refuge Search Lambda"]
+            end
+
+            subgraph PrivateOps["Private Data and Operations Lambdas<br/>Python 3.13 ARM64 containers"]
+                Ingestion["Ingestion Lambda"]
+                Migration["Database Migration Lambda"]
+                Connectivity["RDS Connectivity Lambda"]
+            end
+
+            Database[("RDS PostgreSQL<br/>Private subnets")]
+        end
+
+        subgraph Operations["Scheduling and Monitoring"]
+            Scheduler["EventBridge Scheduler<br/>Minute: every 15 minutes<br/>Hourly: daily<br/>Static: weekly"]
+            DLQ["SQS Dead-Letter Queue"]
+            CloudWatch["CloudWatch Logs and Alarms<br/>Lambda errors<br/>DLQ messages<br/>MinuteDataFresh"]
+            SNS["SNS Ingestion Alerts Topic"]
+        end
+    end
+
+    subgraph External["External Services"]
+        ORS["OpenRouteService<br/>Geocoding, Directions, Matrix"]
+        Melbourne["City of Melbourne<br/>Open Data API"]
+        GoogleMaps["Google Maps<br/>Walking navigation"]
+        Operator["Operations Subscriber"]
+    end
+
+    Web -->|"HTTPS requests"| Gateway
+    Web -.->|"Open navigationUrl"| GoogleMaps
+
+    Gateway -->|"GET /health"| Health
+    Gateway -->|"GET /locations/search"| Location
+    Gateway -->|"POST /routes/search"| Route
+    Gateway -->|"GET /refuges<br/>POST /refuges/search"| Refuge
+
+    Location -->|"Geocoding"| ORS
+    Route -.->|"Walking directions via NAT Gateway"| ORS
+    Refuge -.->|"Walking matrix via NAT Gateway"| ORS
+    Ingestion -.->|"Live datasets via NAT Gateway"| Melbourne
+
+    Route -->|"Read-only route and pedestrian data"| Database
+    Refuge -->|"Read-only landmark data"| Database
+    Ingestion -->|"Upsert sensors, counts, and landmarks"| Database
+    Migration -->|"Apply SQL migrations and reader setup"| Database
+    Connectivity -->|"Validate TLS database connectivity"| Database
+
+    Secrets -.->|"ORS key"| Location
+    Secrets -.->|"ORS key + read-only DB"| Route
+    Secrets -.->|"ORS key + read-only DB"| Refuge
+    Secrets -.->|"Admin DB"| Ingestion
+    Secrets -.->|"Admin DB"| Migration
+    Secrets -.->|"Admin DB"| Connectivity
+    Migration -->|"Populate read-only DB secret"| Secrets
+
+    Scheduler -->|"Mode-based ingestion events"| Ingestion
+    Scheduler -.->|"Target delivery failure"| DLQ
+    Ingestion -.->|"Asynchronous execution failure"| DLQ
+
+    Ingestion -->|"Logs, Lambda errors, and EMF freshness metrics"| CloudWatch
+    DLQ -->|"Queue-depth metric"| CloudWatch
+    CloudWatch -->|"Alarm actions"| SNS
+    SNS -.->|"Confirmed subscription required"| Operator
+```
+
+### Component Overview
+
+- **Frontend Client**: A Next.js/React web application styled with Tailwind CSS, running on Vercel (production) or local node development environments. It interacts with the backend services via a configured `NEXT_PUBLIC_API_BASE_URL` pointing to the API Gateway.
+- **API Gateway & Routing**: An AWS HTTP API Gateway configured with CORS (allowing authorized frontend origins) that acts as the single entry gateway, routing API requests to target Lambda functions.
+- **Lambda Services (VPC Private Subnet)**: Containerized Python 3.13 functions deployed on ARM64 architectures:
+  - **Health API** (`/health`): Verifies service health.
+  - **Location Search API** (`/locations/search`): Queries database for sensor locations.
+  - **Refuge Search API** (`/refuges` & `/refuges/search`): Returns landmarks (e.g. parks, gardens) tagged with `is_refuge = true`.
+  - **Route Search API** (`/routes/search`): Conducts route safety/comfort scoring using pedestrian flow data.
+  - **RDS Connectivity**: Utility function verifying private database endpoint connectivity.
+  - **Database Migration**: Executes SQL schemas and runs Knex/custom migration scripts to sync schema.sql against RDS.
+- **Data Ingestion Pipeline**: EventBridge schedules trigger the Ingestion Lambda with different modes:
+  - **Minute-level Ingestion**: Every 15 minutes to sync current pedestrian conditions.
+  - **Hourly Ingestion**: Run daily (cron `15 2 * * ? *`) to backfill the previous day's historical counts.
+  - **Static Metadata Ingestion**: Run weekly (cron `30 3 ? * SUN *`) to fetch the list of pedestrian sensors and landmarks.
+- **Database Storage**: Amazon RDS PostgreSQL instance hosted securely in private subnets, restricting inbound traffic exclusively to Lambdas via AWS security groups.
+- **Monitoring & Alerting**: System events and ingestion status are monitored via CloudWatch metric alarms (freshness, errors, DLQ size). Lambda execution failures or EventBridge failures are captured into an SQS Dead-Letter Queue (DLQ), triggering alerts through an SNS topic.
+
+---
+
 # Prerequisites
 
 Install the following tools before starting.
@@ -434,24 +541,3 @@ Terraform formatting
 terraform fmt -recursive
 ```
 
----
-
-# Current Progress
-
-- ✅ pnpm workspace
-- ✅ Next.js setup
-- ✅ Python Lambda skeleton
-- ✅ Terraform boilerplate
-- ✅ API Gateway
-- ✅ Health Lambda
-- ✅ Health endpoint
-
----
-
-# Next Milestones
-
-- Route search API
-- Nearby refuge API
-- PostgreSQL (Amazon RDS)
-- Open Data API integration
-- Frontend integration
